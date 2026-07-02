@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
-from .routers import auth, listings, community, checklist, messages, bookings, ai, support, geography
+from .routers import admin, auth, listings, community, checklist, messages, bookings, ai, support, geography
 from .config import settings
 from .seed import run_seed
 
@@ -27,6 +27,7 @@ app.include_router(bookings.router)
 app.include_router(ai.router)
 app.include_router(support.router)
 app.include_router(geography.router)
+app.include_router(admin.router)
 
 
 @app.on_event("startup")

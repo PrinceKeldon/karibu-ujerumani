@@ -17,6 +17,7 @@ const screens = {
   profile: "profile",
   rathaus: "rathaus",
   emergency: "emergency",
+  admin: "admin",
 };
 
 // ── State ─────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ let state = {
   savedIds: new Set(),
   communityPosts: [],
   events: [],
+  announcements: [],
   bookings: [],
   conversations: [],
   checklistDone: new Set(),
@@ -67,9 +69,21 @@ let state = {
   profilePhotoLoading: false,
   authError: null,
   authForm: { email: "", password: "", name: "" },
+  admin: {
+    loaded: false,
+    me: null,
+    summary: null,
+    listings: [],
+    events: [],
+    supportCases: [],
+    invites: [],
+    announcements: [],
+    audit: [],
+  },
 };
 
 const app = document.querySelector("#app");
+const isAdminRoute = window.location.pathname.replace(/\/$/, "") === "/admin" || window.location.pathname.endsWith("/admin.html");
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -139,12 +153,13 @@ function setScreen(screen, opts = {}) {
   state.screen = screen;
   state.sheet = null;
   state.authError = null;
-  history.replaceState(null, "", `#${screen}`);
+  if (!isAdminRoute) history.replaceState(null, "", `#${screen}`);
   render();
   // Kick off data loading for screens that need it
   if (screen === screens.home) {
     if (!state.communityPosts.length) loadCommunity("For You");
     if (!state.events.length) loadEvents();
+    if (!state.announcements.length) loadAnnouncements(false);
   }
   if (screen === screens.search) loadListings();
   if (screen === screens.community) loadCommunity(state.communityTab);
@@ -154,6 +169,7 @@ function setScreen(screen, opts = {}) {
   if (screen === screens.profile) loadProfileData();
   if (screen === screens.rathaus) loadRathaus();
   if (screen === screens.emergency) loadEmergency();
+  if (screen === screens.admin) loadAdminData();
 }
 
 // ── Data loaders ──────────────────────────────────────────────
@@ -303,6 +319,36 @@ async function loadMessages() {
   }
 }
 
+async function loadAnnouncements(shouldRender = true) {
+  try {
+    state.announcements = await api.community.announcements();
+    if (shouldRender) render();
+  } catch {
+    if (shouldRender) showToast("Could not load announcements");
+  }
+}
+
+async function loadAdminData() {
+  try {
+    const [me, summary, listings, events, supportCases, invites, announcements, audit] = await Promise.all([
+      api.admin.me(),
+      api.admin.summary(),
+      api.admin.listings("pending"),
+      api.admin.events("pending"),
+      api.admin.supportCases("open"),
+      api.admin.invites("pending"),
+      api.admin.announcements(),
+      api.admin.audit(),
+    ]);
+    state.admin = { loaded: true, me, summary, listings, events, supportCases, invites, announcements, audit };
+    render();
+  } catch (err) {
+    state.admin = { ...state.admin, loaded: true };
+    render();
+    showToast(err.message || "Admin access required");
+  }
+}
+
 async function loadBookings() {
   try {
     state.bookings = await api.bookings.list();
@@ -340,9 +386,13 @@ async function initAuth() {
     state.messages = [
       { from: "bot", text: `Hi ${user.full_name.split(" ")[0]}! 👋\nHow can I help with life in Germany today?` },
     ];
-    setScreen(screens.home);
-    await loadGeography();
-    loadListings(); // pre-load listings for home recommendations
+    if (isAdminRoute) {
+      setScreen(screens.admin);
+    } else {
+      setScreen(screens.home);
+      await loadGeography();
+      loadListings(); // pre-load listings for home recommendations
+    }
   } catch {
     clearToken();
     setScreen(screens.login);
@@ -361,9 +411,13 @@ async function doLogin(email, password) {
     state.messages = [
       { from: "bot", text: `Hi ${data.user.full_name.split(" ")[0]}! 👋\nHow can I help with life in Germany today?` },
     ];
-    setScreen(screens.home);
-    await loadGeography();
-    loadListings();
+    if (isAdminRoute) {
+      setScreen(screens.admin);
+    } else {
+      setScreen(screens.home);
+      await loadGeography();
+      loadListings();
+    }
   } catch (e) {
     state.loading = false;
     state.authError = e.message;
@@ -383,9 +437,13 @@ async function doRegister(email, password, fullName) {
     state.messages = [
       { from: "bot", text: `Welcome to Karibu Ujerumani, ${data.user.full_name.split(" ")[0]}! 🎉\nI'm here for community, services, housing, and everyday life in Germany.` },
     ];
-    setScreen(screens.home);
-    await loadGeography();
-    loadListings();
+    if (isAdminRoute) {
+      setScreen(screens.admin);
+    } else {
+      setScreen(screens.home);
+      await loadGeography();
+      loadListings();
+    }
   } catch (e) {
     state.loading = false;
     state.authError = e.message;
@@ -697,6 +755,7 @@ function home() {
   const tierCities = state.cities.filter((c) => c.is_tier_1 || c.is_tier_2).slice(0, 8);
   const communityHighlights = state.communityPosts.slice(0, 2);
   const upcomingEvents = state.events.slice(0, 2);
+  const publishedAnnouncements = state.announcements.slice(0, 2);
   const listingSection = topListings.length
     ? `<div class="section-row"><h2>Recommended for you</h2><button data-screen="${screens.search}">See all</button></div>
       <div class="mini-row">${topListings.map((l) => `<button class="mini-listing room-${l.theme}" data-listing-id="${l.id}"><span>€${l.price}/mo</span><b>${l.district}</b></button>`).join("")}</div>`
@@ -704,6 +763,10 @@ function home() {
   const eventsSection = upcomingEvents.length
     ? `<div class="section-row" style="margin-top:22px"><h2>Events</h2><button data-community-tab="Events" data-screen="${screens.community}">View all</button></div>
       <div class="announce-cards">${upcomingEvents.map((e) => `<button class="announce-card" data-community-tab="Events" data-screen="${screens.community}"><span class="announce-icon">📅</span><div><strong>${escapeHtml(e.title)}</strong><p>${escapeHtml(e.date_str)} · ${escapeHtml(e.location)}</p></div><b class="announce-tag">${escapeHtml(e.tag)}</b></button>`).join("")}</div>`
+    : "";
+  const announcementsSection = publishedAnnouncements.length
+    ? `<div class="section-row" style="margin-top:22px"><h2>Community Notices</h2><button data-screen="${screens.community}">Community</button></div>
+      <div class="announce-cards">${publishedAnnouncements.map((a) => `<button class="announce-card" data-screen="${screens.community}"><span class="announce-icon">📣</span><div><strong>${escapeHtml(a.title)}</strong><p>${escapeHtml(a.body)}</p></div><b class="announce-tag">${escapeHtml(a.audience)}</b></button>`).join("")}</div>`
     : "";
   const communitySection = communityHighlights.length
     ? `<div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">Join</button></div>
@@ -733,6 +796,7 @@ function home() {
     ${listingSection}
     <div class="section-row" style="margin-top:22px"><h2>Explore Germany</h2><button data-action="city-selector">All cities</button></div>
     <div class="city-strip">${tierCities.map((c) => `<button class="${state.selectedCity?.id === c.id ? "active" : ""}" data-city-id="${c.id}"><b>${c.name}</b><span>${c.state_abbreviation} · ${c.listing_count} listing${c.listing_count === 1 ? "" : "s"}</span></button>`).join("")}</div>
+    ${announcementsSection}
     ${eventsSection}
     ${communitySection}
     </div>
@@ -997,11 +1061,15 @@ function community() {
       </div>`;
     } else {
       content = `<div class="event-stack">${state.events.map((e) => `<article class="event-card">
-        <div class="event-header"><span class="event-tag">${escapeHtml(e.tag)}</span><span class="event-rsvp">👥 ${e.rsvp_count} going</span></div>
+        <div class="event-header"><span class="event-tag">${escapeHtml(e.tag)}${e.is_ticketed ? " · Ticketed" : " · Free"}</span><span class="event-rsvp">${e.approval_status === "pending" ? "Pending approval" : `👥 ${e.rsvp_count} going`}</span></div>
         <h2>${escapeHtml(e.title)}</h2>
         <p>📅 ${escapeHtml(e.date_str)}</p>
         <p>📍 ${escapeHtml(e.location)}</p>
-        <button class="primary event-btn ${e.is_rsvped ? "rsvped" : ""}" data-rsvp-id="${e.id}">${e.is_rsvped ? "Cancel RSVP" : "RSVP to attend"}</button>
+        ${e.approval_status === "pending"
+          ? `<button class="primary event-btn rsvped" disabled>Awaiting admin approval</button>`
+          : e.is_ticketed && e.ticket_url
+            ? `<a class="primary event-btn" href="${escapeHtml(e.ticket_url)}" target="_blank" rel="noopener">${e.ticket_price ? `Get tickets · ${escapeHtml(e.ticket_price)}` : "Get tickets"}</a>`
+            : `<button class="primary event-btn ${e.is_rsvped ? "rsvped" : ""}" data-rsvp-id="${e.id}">${e.is_rsvped ? "Cancel RSVP" : "RSVP to attend"}</button>`}
       </article>`).join("")}</div>`;
     }
   } else {
@@ -1150,6 +1218,74 @@ function profile() {
 
 function profileItemIcon(item) {
   return { "Edit Profile": "♙", "Profile Photo": "◉", Verification: "✓", "Payment Methods": "▣", "Saved Searches": "⌕", Settings: "⚙", "Help & Support": "☼" }[item];
+}
+
+function adminDashboard() {
+  const a = state.admin;
+  if (!a.loaded) {
+    return shell("Admin", `<div class="loading-state">${icons.spinner} Loading admin dashboard…</div>`, { hideNav: true, className: "admin-screen" });
+  }
+  if (!a.me) {
+    return shell(
+      "Admin",
+      `<div class="empty-state"><h2>Admin access required</h2><p>This dashboard is gated to approved admins and moderators.</p><button class="primary" data-action="logout">Sign in with another account</button></div>`,
+      { hideNav: true, className: "admin-screen" }
+    );
+  }
+  const summary = a.summary || {};
+  const listingRow = (l) => `<article class="admin-row">
+    <div><b>${escapeHtml(l.title)}</b><span>${escapeHtml(l.district)} · EUR ${l.price} · Host #${l.host_id || "-"}</span></div>
+    <div class="admin-actions"><button data-admin-listing="${l.id}" data-status="approved">Approve</button><button data-admin-listing="${l.id}" data-status="rejected">Reject</button><button data-admin-listing="${l.id}" data-status="suspended">Suspend</button></div>
+  </article>`;
+  const eventRow = (e) => `<article class="admin-row">
+    <div><b>${escapeHtml(e.title)}</b><span>${escapeHtml(e.location)} · ${escapeHtml(e.ticket_price || "Ticketed")}</span></div>
+    <div class="admin-actions"><button data-admin-event="${e.id}" data-status="approved">Approve</button><button data-admin-event="${e.id}" data-status="rejected">Reject</button><button data-admin-event="${e.id}" data-status="suspended">Suspend</button></div>
+  </article>`;
+  const caseRow = (c) => `<article class="admin-row">
+    <div><b>${escapeHtml(c.case_ref)} · ${escapeHtml(c.case_type)}</b><span>${escapeHtml(c.contact_pref || "No preference")} · User #${c.user_id}</span></div>
+    <div class="admin-actions"><button data-admin-case="${c.id}" data-status="assigned">Assign</button><button data-admin-case="${c.id}" data-status="resolved">Resolve</button><button data-admin-case="${c.id}" data-status="escalated">Escalate</button></div>
+  </article>`;
+  const inviteRow = (i) => `<article class="admin-row">
+    <div><b>${escapeHtml(i.email)}</b><span>Invited by #${i.invited_by} · ${escapeHtml(i.status)}</span></div>
+    <div class="admin-actions">${a.me.role === "admin" ? `<button data-admin-invite="${i.id}">Approve</button>` : "<span>Awaiting admin</span>"}</div>
+  </article>`;
+  return shell(
+    "Admin",
+    `<section class="admin-hero">
+      <div><h1>Operations</h1><p>${escapeHtml(a.me.email)} · ${escapeHtml(a.me.role)}</p></div>
+      <button class="secondary mini-cta" data-action="logout">Sign out</button>
+    </section>
+    <div class="admin-stats">
+      <b>${summary.pending_listings || 0}<span>Listing reviews</span></b>
+      <b>${summary.pending_ticketed_events || 0}<span>Ticketed events</span></b>
+      <b>${summary.open_support_cases || 0}<span>Open support</span></b>
+      <b>${summary.pending_moderator_invites || 0}<span>Moderator invites</span></b>
+    </div>
+    <section class="admin-panel"><h2>Listing Verification</h2>${a.listings.length ? a.listings.map(listingRow).join("") : `<p class="admin-empty">No pending listings.</p>`}</section>
+    <section class="admin-panel"><h2>Ticketed Event Approval</h2>${a.events.length ? a.events.map(eventRow).join("") : `<p class="admin-empty">No pending ticketed events.</p>`}</section>
+    <section class="admin-panel"><h2>Care & Emergency Support</h2>${a.supportCases.length ? a.supportCases.map(caseRow).join("") : `<p class="admin-empty">No open support cases.</p>`}</section>
+    <section class="admin-panel">
+      <h2>Moderator Invites</h2>
+      <form class="admin-inline-form" id="admin-invite-form">
+        <input name="email" type="email" placeholder="moderator@email.com" required />
+        <input name="permissions" placeholder='{"listings":true,"community":true}' />
+        <button class="primary" type="submit">Invite moderator</button>
+      </form>
+      ${a.invites.length ? a.invites.map(inviteRow).join("") : `<p class="admin-empty">No pending moderator invites.</p>`}
+    </section>
+    <section class="admin-panel">
+      <h2>Announcements</h2>
+      <form class="admin-form" id="admin-announcement-form">
+        <input name="title" placeholder="Announcement title" required />
+        <textarea name="body" rows="3" placeholder="Community notice" required></textarea>
+        <div class="finder-row"><select name="channel"><option value="community">Community board</option><option value="messages">Messages</option></select><select name="audience"><option value="all">All users</option><option value="newcomers">Newcomers</option><option value="verified">Verified users</option></select></div>
+        <button class="primary" type="submit">Publish announcement</button>
+      </form>
+      ${a.announcements.slice(0, 4).map((ann) => `<article class="admin-row"><div><b>${escapeHtml(ann.title)}</b><span>${escapeHtml(ann.channel)} · ${escapeHtml(ann.status)}</span></div></article>`).join("")}
+    </section>
+    <section class="admin-panel"><h2>Audit Log</h2>${a.audit.slice(0, 8).map((log) => `<article class="admin-row"><div><b>${escapeHtml(log.action)}</b><span>${escapeHtml(log.target_type)} #${escapeHtml(log.target_id || "-")} · ${new Date(log.created_at).toLocaleString()}</span></div></article>`).join("") || `<p class="admin-empty">No audit entries yet.</p>`}</section>`,
+    { hideNav: true, className: "admin-screen" }
+  );
 }
 
 function rathausCards(offices) {
@@ -1344,7 +1480,7 @@ function serviceTone(category) {
 function render() {
   // Always destroy Leaflet map before replacing DOM; initRathausMap re-creates it
   if (_rathausMap) { _rathausMap.remove(); _rathausMap = null; }
-  const screenMap = { splash, login, register, home, search, detail, listRoom, assistant, checklist, community, messages, bookings, profile, rathaus, emergency };
+  const screenMap = { splash, login, register, home, search, detail, listRoom, assistant, checklist, community, messages, bookings, profile, rathaus, emergency, admin: adminDashboard };
   app.innerHTML = screenMap[state.screen]?.() ?? "";
   if (state.screen === screens.rathaus) requestAnimationFrame(initRathausMap);
 }
@@ -1371,6 +1507,10 @@ app.addEventListener("click", (e) => {
   const carouselBtn = e.target.closest("[data-carousel-listing]");
   const amenityRemoveBtn = e.target.closest("[data-amenity-remove]");
   const cityBtn = e.target.closest("[data-city-id]");
+  const adminListingBtn = e.target.closest("[data-admin-listing]");
+  const adminEventBtn = e.target.closest("[data-admin-event]");
+  const adminCaseBtn = e.target.closest("[data-admin-case]");
+  const adminInviteBtn = e.target.closest("[data-admin-invite]");
 
   const prefBtn = e.target.closest("[data-pref]");
   if (prefBtn && state.sheet?._pendingCase) {
@@ -1387,6 +1527,10 @@ app.addEventListener("click", (e) => {
   }
   if (carouselBtn) { openCarousel(parseInt(carouselBtn.dataset.carouselListing, 10)); return; }
   if (cityBtn) { selectCity(parseInt(cityBtn.dataset.cityId, 10)); return; }
+  if (adminListingBtn) { updateAdminListing(parseInt(adminListingBtn.dataset.adminListing, 10), adminListingBtn.dataset.status); return; }
+  if (adminEventBtn) { updateAdminEvent(parseInt(adminEventBtn.dataset.adminEvent, 10), adminEventBtn.dataset.status); return; }
+  if (adminCaseBtn) { updateAdminCase(parseInt(adminCaseBtn.dataset.adminCase, 10), adminCaseBtn.dataset.status); return; }
+  if (adminInviteBtn) { approveAdminInvite(parseInt(adminInviteBtn.dataset.adminInvite, 10)); return; }
   if (actionBtn && (!actionBtn.classList.contains("demo-backdrop") || e.target === actionBtn)) {
     handleAction(actionBtn.dataset.action);
     return;
@@ -1565,6 +1709,19 @@ function communityEventForm() {
         ${["Community", "Meetup", "Workshop", "Sports", "Faith", "Family"].map((tag) => `<option value="${tag}">${tag}</option>`).join("")}
       </select>
     </label>
+    <label>Access
+      <select name="event_access" id="event-access-select">
+        <option value="free">Free event - publish immediately</option>
+        <option value="ticketed">Ticketed event - requires admin approval</option>
+      </select>
+    </label>
+    <label>Ticket link
+      <input name="ticket_url" type="url" placeholder="Required only for ticketed events" />
+    </label>
+    <label>Ticket price
+      <input name="ticket_price" maxlength="40" placeholder="e.g. EUR 15 or donation" />
+    </label>
+    <p class="route-note">Free community events go live immediately. Ticketed events are reviewed before they appear publicly.</p>
     <button class="primary" type="submit">Create event</button>
   </form>`;
 }
@@ -1641,6 +1798,46 @@ async function handleRsvp(id) {
     if (ev) { ev.rsvp_count = res.rsvp_count; ev.is_rsvped = res.rsvped; render(); }
     showToast(res.rsvped ? `RSVP confirmed: ${res.title}` : `RSVP cancelled: ${res.title}`);
   } catch { showToast("Could not RSVP"); }
+}
+
+async function updateAdminListing(id, status) {
+  try {
+    await api.admin.setListingStatus(id, status, `Set from admin dashboard to ${status}`);
+    showToast(`Listing ${status}`);
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not update listing");
+  }
+}
+
+async function updateAdminEvent(id, status) {
+  try {
+    await api.admin.setEventStatus(id, status, `Set from admin dashboard to ${status}`);
+    showToast(`Event ${status}`);
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not update event");
+  }
+}
+
+async function updateAdminCase(id, status) {
+  try {
+    await api.admin.updateSupportCase(id, status, `Set from admin dashboard to ${status}`);
+    showToast(`Case ${status}`);
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not update case");
+  }
+}
+
+async function approveAdminInvite(id) {
+  try {
+    await api.admin.approveInvite(id);
+    showToast("Moderator invite approved");
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not approve invite");
+  }
 }
 
 async function handleBook(listingId) {
@@ -2020,18 +2217,22 @@ app.addEventListener("submit", async (e) => {
 
   if (e.target.id === "community-event-form") {
     const fd = new FormData(e.target);
+    const isTicketed = fd.get("event_access") === "ticketed";
     try {
       const event = await api.community.createEvent({
         title: fd.get("title"),
         date_str: formatCommunityDate(fd.get("date_str")),
         location: fd.get("location"),
         tag: fd.get("tag"),
+        is_ticketed: isTicketed,
+        ticket_url: fd.get("ticket_url") || null,
+        ticket_price: fd.get("ticket_price") || null,
       });
       state.sheet = null;
       state.communityTab = "Events";
       state.events = [event, ...state.events.filter((e) => e.id !== event.id)];
       render();
-      showToast("Community event created");
+      showToast(event.approval_status === "pending" ? "Ticketed event submitted for admin approval" : "Free community event published");
     } catch (err) {
       showToast(err.message || "Could not create event");
     }
@@ -2054,6 +2255,38 @@ app.addEventListener("submit", async (e) => {
       openSheet("Case opened ✓", `<p class="sheet-copy">Your support case has been opened. A Karibu responder will follow up through your preferred route.</p><div class="case-number">${res.case_ref}</div>`, "Done");
     } catch (err) {
       showToast(err.message || "Could not open support case");
+    }
+    return;
+  }
+
+  if (e.target.id === "admin-invite-form") {
+    const fd = new FormData(e.target);
+    try {
+      await api.admin.inviteModerator(fd.get("email"), fd.get("permissions") || "{}");
+      e.target.reset();
+      showToast(state.admin.me?.role === "admin" ? "Moderator invited" : "Moderator invite submitted for admin approval");
+      loadAdminData();
+    } catch (err) {
+      showToast(err.message || "Could not invite moderator");
+    }
+    return;
+  }
+
+  if (e.target.id === "admin-announcement-form") {
+    const fd = new FormData(e.target);
+    try {
+      await api.admin.createAnnouncement({
+        title: fd.get("title"),
+        body: fd.get("body"),
+        channel: fd.get("channel"),
+        audience: fd.get("audience"),
+        publish_now: true,
+      });
+      e.target.reset();
+      showToast("Announcement published");
+      loadAdminData();
+    } catch (err) {
+      showToast(err.message || "Could not publish announcement");
     }
     return;
   }
@@ -2148,8 +2381,10 @@ async function doListRoom(data) {
     const { images, amenities, communication_route, ...listingData } = data;
     const listing = await api.listings.create(listingData);
     const enrichedListing = { ...listing, images, amenities, communication_route };
-    state.listings = [enrichedListing, ...state.listings];
-    if (state.selectedCity) {
+    if (enrichedListing.approval_status === "approved") {
+      state.listings = [enrichedListing, ...state.listings];
+    }
+    if (state.selectedCity && enrichedListing.approval_status === "approved") {
       state.selectedCity = { ...state.selectedCity, listing_count: (state.selectedCity.listing_count || 0) + 1 };
       state.cities = state.cities.map((c) => c.id === state.selectedCity.id ? state.selectedCity : c);
       state.listingFallback = false;
@@ -2157,13 +2392,11 @@ async function doListRoom(data) {
     state.listRoomLoading = false;
     state.listRoomAmenities = [];
     openSheet(
-      "Listing submitted! 🎉",
-      `<p class="sheet-copy">Your room <strong>${enrichedListing.title}</strong> has been submitted for community verification. It will appear in search results once approved.</p>
+      "Listing submitted",
+      `<p class="sheet-copy">Your room <strong>${enrichedListing.title}</strong> has been submitted for admin approval. It will appear in search results after approval.</p>
       <div class="case-number">Listing #${listing.id}</div>`,
-      "View listing"
+      "Done"
     );
-    // Navigate to the new listing on sheet close
-    state.sheet._onClose = () => { state.detailListing = enrichedListing; setScreen(screens.detail); };
   } catch (e) {
     state.listRoomLoading = false;
     render();

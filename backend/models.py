@@ -31,6 +31,7 @@ class Listing(Base):
     theme = Column(String, default="sun")
     rating = Column(String, default="4.5 ★")
     is_top_match = Column(Boolean, default=False)
+    approval_status = Column(String, default="pending", nullable=False)
     host_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     state_id = Column(Integer, ForeignKey("states.id"), nullable=True)
     city_id = Column(Integer, ForeignKey("cities.id"), nullable=True)
@@ -159,6 +160,10 @@ class Event(Base):
     location = Column(String, nullable=False)
     rsvp_count = Column(Integer, default=0)
     tag = Column(String, default="Event")
+    is_ticketed = Column(Boolean, default=False, nullable=False)
+    ticket_url = Column(String, nullable=True)
+    ticket_price = Column(String, nullable=True)
+    approval_status = Column(String, default="approved", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -238,4 +243,64 @@ class Message(Base):
     to_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     body = Column(Text, nullable=False)
     is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdminRole(Base):
+    __tablename__ = "admin_roles"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    role = Column(String, default="moderator", nullable=False)
+    permissions = Column(Text, default="{}")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ModeratorInvite(Base):
+    __tablename__ = "moderator_invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False)
+    invited_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(String, default="pending", nullable=False)
+    permissions = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action = Column(String, nullable=False)
+    target_type = Column(String, nullable=False)
+    target_id = Column(String, nullable=True)
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    audience = Column(String, default="all", nullable=False)
+    channel = Column(String, default="community", nullable=False)
+    status = Column(String, default="draft", nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    published_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SupportCaseNote(Base):
+    __tablename__ = "support_case_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("support_cases.id"), nullable=False)
+    admin_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    note = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

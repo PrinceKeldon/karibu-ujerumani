@@ -30,6 +30,8 @@ def create_booking(
     listing = db.query(models.Listing).filter(models.Listing.id == data.listing_id).first()
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    if listing.approval_status != "approved":
+        raise HTTPException(status_code=403, detail="Listing is pending admin approval")
     booking = models.Booking(
         user_id=current_user.id,
         listing_id=data.listing_id,

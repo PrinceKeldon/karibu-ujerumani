@@ -9,6 +9,8 @@
     { "source": "/messages/:path*", "destination": "/api/index.py" },
     { "source": "/bookings/:path*", "destination": "/api/index.py" },
     { "source": "/ai/:path*", "destination": "/api/index.py" },
-    { "source": "/support/:path*", "destination": "/api/index.py" }
+    { "source": "/support/:path*", "destination": "/api/index.py" },
+    { "source": "/admin-api/:path*", "destination": "/api/index.py" },
+    { "source": "/admin", "destination": "/index.html" }
   ]
 }

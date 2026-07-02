@@ -37,6 +37,7 @@ def create_listing(
         host_id=current_user.id,
         rating="New ★",
         is_top_match=False,
+        approval_status="pending",
     )
     db.add(listing)
     db.commit()
@@ -53,7 +54,7 @@ def get_listings(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    q = db.query(models.Listing)
+    q = db.query(models.Listing).filter(models.Listing.approval_status == "approved")
     if city_id:
         q = q.filter(models.Listing.city_id == city_id)
     if state_id:
@@ -76,7 +77,14 @@ def get_saved(
         .all()
     )
     ids = [s.listing_id for s in saved]
-    listings = db.query(models.Listing).filter(models.Listing.id.in_(ids)).all()
+    listings = (
+        db.query(models.Listing)
+        .filter(
+            models.Listing.id.in_(ids),
+            models.Listing.approval_status == "approved",
+        )
+        .all()
+    )
     return [schemas.ListingOut.model_validate(l, update={"is_saved": True}) for l in listings]
 
 
@@ -98,6 +106,16 @@ def toggle_save(
         db.delete(existing)
         db.commit()
         return {"saved": False}
+    listing = (
+        db.query(models.Listing)
+        .filter(
+            models.Listing.id == listing_id,
+            models.Listing.approval_status == "approved",
+        )
+        .first()
+    )
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
     db.add(models.SavedListing(user_id=current_user.id, listing_id=listing_id))
     db.commit()
     return {"saved": True}

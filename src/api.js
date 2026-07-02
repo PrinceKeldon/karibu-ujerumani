@@ -102,6 +102,7 @@ export const api = {
     events: () => request("/community/events"),
     createEvent: (d) => request("/community/events", { method: "POST", body: d }),
     rsvp: (id) => request(`/community/events/${id}/rsvp`, { method: "POST" }),
+    announcements: () => request("/community/announcements"),
   },
   checklist: {
     get: () => request("/checklist/me"),
@@ -124,5 +125,25 @@ export const api = {
     createCase: (case_type, description, contact_pref) =>
       request("/support/cases", { method: "POST", body: { case_type, description, contact_pref } }),
     myCases: () => request("/support/cases/mine"),
+  },
+  admin: {
+    me: () => request("/admin-api/me"),
+    summary: () => request("/admin-api/summary"),
+    listings: (status = "pending") => request(`/admin-api/listings?status=${encodeURIComponent(status)}`),
+    setListingStatus: (id, status, note) =>
+      request(`/admin-api/listings/${id}/status`, { method: "POST", body: { status, note } }),
+    events: (status = "pending") => request(`/admin-api/events?status=${encodeURIComponent(status)}`),
+    setEventStatus: (id, status, note) =>
+      request(`/admin-api/events/${id}/status`, { method: "POST", body: { status, note } }),
+    supportCases: (status = "open") => request(`/admin-api/support/cases?status=${encodeURIComponent(status)}`),
+    updateSupportCase: (id, status, note) =>
+      request(`/admin-api/support/cases/${id}`, { method: "POST", body: { status, note } }),
+    invites: (status = "pending") => request(`/admin-api/moderator-invites?status=${encodeURIComponent(status)}`),
+    inviteModerator: (email, permissions = "{}") =>
+      request("/admin-api/moderator-invites", { method: "POST", body: { email, permissions } }),
+    approveInvite: (id) => request(`/admin-api/moderator-invites/${id}/approve`, { method: "POST" }),
+    announcements: () => request("/admin-api/announcements"),
+    createAnnouncement: (d) => request("/admin-api/announcements", { method: "POST", body: d }),
+    audit: () => request("/admin-api/audit"),
   },
 };

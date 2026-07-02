@@ -106,12 +106,23 @@ def ensure_schema_compatibility() -> None:
         statements.append("ALTER TABLE listings ADD COLUMN state_id INTEGER")
     if "city_id" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN city_id INTEGER")
+    if "approval_status" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN approval_status VARCHAR DEFAULT 'approved' NOT NULL")
     if "profile_photo_url" not in user_columns:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_url TEXT")
     if "profile_photo_path" not in user_columns:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_path TEXT")
     if "events" in table_names and "user_id" not in event_columns:
         statements.append("ALTER TABLE events ADD COLUMN user_id INTEGER")
+    if "events" in table_names:
+        if "is_ticketed" not in event_columns:
+            statements.append("ALTER TABLE events ADD COLUMN is_ticketed BOOLEAN DEFAULT FALSE NOT NULL")
+        if "ticket_url" not in event_columns:
+            statements.append("ALTER TABLE events ADD COLUMN ticket_url VARCHAR")
+        if "ticket_price" not in event_columns:
+            statements.append("ALTER TABLE events ADD COLUMN ticket_price VARCHAR")
+        if "approval_status" not in event_columns:
+            statements.append("ALTER TABLE events ADD COLUMN approval_status VARCHAR DEFAULT 'approved' NOT NULL")
     if "emergency_services" in table_names:
         for column in ("website", "address", "map_url", "office_hours"):
             if column not in emergency_columns:

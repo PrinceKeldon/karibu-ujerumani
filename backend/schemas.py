@@ -112,6 +112,7 @@ class ListingOut(BaseModel):
     host_id: Optional[int] = None
     city_id: Optional[int] = None
     state_id: Optional[int] = None
+    approval_status: str = "pending"
     is_saved: bool = False
 
     model_config = {"from_attributes": True}
@@ -235,6 +236,9 @@ class EventCreate(BaseModel):
     date_str: str
     location: str
     tag: str = "Community"
+    is_ticketed: bool = False
+    ticket_url: Optional[str] = None
+    ticket_price: Optional[str] = None
 
 
 class EventOut(BaseModel):
@@ -244,6 +248,10 @@ class EventOut(BaseModel):
     location: str
     rsvp_count: int
     tag: str
+    is_ticketed: bool = False
+    ticket_url: Optional[str] = None
+    ticket_price: Optional[str] = None
+    approval_status: str = "approved"
     is_rsvped: bool = False
 
     model_config = {"from_attributes": True}
@@ -295,6 +303,103 @@ class SupportCaseOut(BaseModel):
     case_type: str
     case_ref: str
     status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AdminRoleOut(BaseModel):
+    user_id: int
+    role: str
+    permissions: Optional[str] = "{}"
+
+    model_config = {"from_attributes": True}
+
+
+class AdminMeOut(BaseModel):
+    user_id: int
+    email: str
+    role: str
+    permissions: Optional[str] = "{}"
+
+
+class AdminSummaryOut(BaseModel):
+    pending_listings: int = 0
+    pending_ticketed_events: int = 0
+    open_support_cases: int = 0
+    pending_moderator_invites: int = 0
+    published_announcements: int = 0
+
+
+class AdminAction(BaseModel):
+    status: str
+    note: Optional[str] = None
+
+
+class ModeratorInviteCreate(BaseModel):
+    email: EmailStr
+    permissions: Optional[str] = "{}"
+
+
+class ModeratorInviteOut(BaseModel):
+    id: int
+    email: str
+    invited_by: int
+    approved_by: Optional[int] = None
+    status: str
+    permissions: Optional[str] = "{}"
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SupportCaseAdminOut(BaseModel):
+    id: int
+    user_id: int
+    case_type: str
+    description: Optional[str] = None
+    contact_pref: Optional[str] = None
+    case_ref: str
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SupportCaseUpdate(BaseModel):
+    status: str
+    note: Optional[str] = None
+
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    body: str
+    audience: str = "all"
+    channel: str = "community"
+    publish_now: bool = True
+
+
+class AnnouncementOut(BaseModel):
+    id: int
+    title: str
+    body: str
+    audience: str
+    channel: str
+    status: str
+    created_by: int
+    published_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AdminAuditOut(BaseModel):
+    id: int
+    actor_user_id: int
+    action: str
+    target_type: str
+    target_id: Optional[str] = None
+    detail: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     gemini_api_key: str = ""
     supabase_url: str = ""
+    admin_emails: str = ""
     cors_origin_regex: str = (
         r"https?://("
         r"(www\.)?karibujerumani\.online|"

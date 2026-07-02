@@ -32,6 +32,10 @@ def _event_out(event: models.Event, rsvped_ids: set[int]) -> schemas.EventOut:
         location=event.location,
         rsvp_count=event.rsvp_count,
         tag=event.tag,
+        is_ticketed=event.is_ticketed,
+        ticket_url=event.ticket_url,
+        ticket_price=event.ticket_price,
+        approval_status=event.approval_status,
         is_rsvped=event.id in rsvped_ids,
     )
 
@@ -164,7 +168,16 @@ def get_events(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    events = db.query(models.Event).order_by(models.Event.created_at.desc()).limit(50).all()
+    events = (
+        db.query(models.Event)
+        .filter(
+            (models.Event.approval_status == "approved")
+            | (models.Event.user_id == current_user.id)
+        )
+        .order_by(models.Event.created_at.desc())
+        .limit(50)
+        .all()
+    )
     rsvped_ids = {
         row.event_id
         for row in db.query(models.EventRsvp.event_id)
@@ -177,6 +190,23 @@ def get_events(
     return [_event_out(event, rsvped_ids) for event in events]
 
 
+@router.get("/announcements", response_model=List[schemas.AnnouncementOut])
+def get_published_announcements(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return (
+        db.query(models.Announcement)
+        .filter(
+            models.Announcement.status == "published",
+            models.Announcement.channel.in_(["community", "messages"]),
+        )
+        .order_by(models.Announcement.published_at.desc().nullslast(), models.Announcement.created_at.desc())
+        .limit(10)
+        .all()
+    )
+
+
 @router.post("/events", response_model=schemas.EventOut)
 def create_event(
     data: schemas.EventCreate,
@@ -187,14 +217,23 @@ def create_event(
     date_str = data.date_str.strip()
     location = data.location.strip()
     tag = data.tag if data.tag in EVENT_TAGS else "Community"
+    is_ticketed = bool(data.is_ticketed)
+    ticket_url = data.ticket_url.strip() if data.ticket_url else None
+    ticket_price = data.ticket_price.strip() if data.ticket_price else None
     if not title or not date_str or not location:
         raise HTTPException(status_code=400, detail="Title, date, and location are required")
+    if is_ticketed and not ticket_url:
+        raise HTTPException(status_code=400, detail="Ticketed events need a ticket link")
     event = models.Event(
         user_id=current_user.id,
         title=title,
         date_str=date_str,
         location=location,
         tag=tag,
+        is_ticketed=is_ticketed,
+        ticket_url=ticket_url,
+        ticket_price=ticket_price,
+        approval_status="pending" if is_ticketed else "approved",
     )
     db.add(event)
     db.commit()
@@ -211,6 +250,8 @@ def rsvp_event(
     event = db.query(models.Event).filter(models.Event.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+    if event.approval_status != "approved":
+        raise HTTPException(status_code=403, detail="Event is pending admin approval")
     existing = (
         db.query(models.EventRsvp)
         .filter(
