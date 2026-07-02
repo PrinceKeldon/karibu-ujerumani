@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-profile-persistence";
+const VERSION = "mvp0.1-20260702-home-real-data";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 

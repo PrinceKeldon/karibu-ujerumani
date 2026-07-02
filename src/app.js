@@ -696,6 +696,18 @@ function home() {
   const tierCities = state.cities.filter((c) => c.is_tier_1 || c.is_tier_2).slice(0, 8);
   const communityHighlights = state.communityPosts.slice(0, 2);
   const upcomingEvents = state.events.slice(0, 2);
+  const listingSection = topListings.length
+    ? `<div class="section-row"><h2>Recommended for you</h2><button data-screen="${screens.search}">See all</button></div>
+      <div class="mini-row">${topListings.map((l) => `<button class="mini-listing room-${l.theme}" data-listing-id="${l.id}"><span>€${l.price}/mo</span><b>${l.district}</b></button>`).join("")}</div>`
+    : "";
+  const eventsSection = upcomingEvents.length
+    ? `<div class="section-row" style="margin-top:22px"><h2>Events</h2><button data-community-tab="Events" data-screen="${screens.community}">View all</button></div>
+      <div class="announce-cards">${upcomingEvents.map((e) => `<button class="announce-card" data-community-tab="Events" data-screen="${screens.community}"><span class="announce-icon">📅</span><div><strong>${escapeHtml(e.title)}</strong><p>${escapeHtml(e.date_str)} · ${escapeHtml(e.location)}</p></div><b class="announce-tag">${escapeHtml(e.tag)}</b></button>`).join("")}</div>`
+    : "";
+  const communitySection = communityHighlights.length
+    ? `<div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">Join</button></div>
+      <div class="community-preview">${communityHighlights.map((p) => `<button class="community-highlight" data-screen="${screens.community}"><b>${escapeHtml(p.author_name)} · ${escapeHtml(p.author_area || "Germany")}</b><span>${escapeHtml(p.body)}</span><footer>💬 ${p.comments || 0} replies · ${timeAgo(p.created_at)}</footer></button>`).join("")}</div>`
+    : "";
   const cards = [
     ["🏠", "Find Housing", "Rooms, apartments & short stays", screens.search],
     ["👥", "Community", "Ask, share, connect & help others", screens.community],
@@ -717,22 +729,11 @@ function home() {
     </button>
     <h2 class="section-title">Quick access</h2>
     <div class="quick-grid">${cards.map(([e, t, s, sc]) => `<button class="quick-card" data-screen="${sc}"><span>${e}</span><strong>${t}</strong><small>${s}</small></button>`).join("")}</div>
-    <div class="section-row"><h2>Recommended for you</h2><button data-screen="${screens.search}">See all</button></div>
-    ${topListings.length
-      ? `<div class="mini-row">${topListings.map((l) => `<button class="mini-listing room-${l.theme}" data-listing-id="${l.id}"><span>€${l.price}/mo</span><b>${l.district}</b></button>`).join("")}</div>`
-      : `<div class="mini-row skeleton-row"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>`}
+    ${listingSection}
     <div class="section-row" style="margin-top:22px"><h2>Explore Germany</h2><button data-action="city-selector">All cities</button></div>
     <div class="city-strip">${tierCities.map((c) => `<button class="${state.selectedCity?.id === c.id ? "active" : ""}" data-city-id="${c.id}"><b>${c.name}</b><span>${c.state_abbreviation} · ${c.listing_count} listing${c.listing_count === 1 ? "" : "s"}</span></button>`).join("")}</div>
-    <div class="section-row" style="margin-top:22px"><h2>Events</h2><button data-community-tab="Events" data-screen="${screens.community}">View all</button></div>
-    <div class="announce-cards">${upcomingEvents.length
-      ? upcomingEvents.map((e) => `<button class="announce-card" data-community-tab="Events" data-screen="${screens.community}"><span class="announce-icon">📅</span><div><strong>${escapeHtml(e.title)}</strong><p>${escapeHtml(e.date_str)} · ${escapeHtml(e.location)}</p></div><b class="announce-tag">${escapeHtml(e.tag)}</b></button>`).join("")
-      : `<button class="announce-card" data-community-tab="Events" data-screen="${screens.community}"><span class="announce-icon">📅</span><div><strong>No events yet</strong><p>Community events will appear here when posted.</p></div><b class="announce-tag">Events</b></button>`}</div>
-    <div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">${communityHighlights.length ? "Join" : "Start"}</button></div>
-    <div class="community-preview">
-      ${communityHighlights.length
-        ? communityHighlights.map((p) => `<button class="community-highlight" data-screen="${screens.community}"><b>${escapeHtml(p.author_name)} · ${escapeHtml(p.author_area || "Germany")}</b><span>${escapeHtml(p.body)}</span><footer>💬 ${p.comments || 0} replies · ${timeAgo(p.created_at)}</footer></button>`).join("")
-        : `<button class="community-highlight empty" data-screen="${screens.community}"><b>Community is ready</b><span>Be the first to ask a question, share an event, or welcome someone near you.</span><footer>No posts yet</footer></button>`}
-    </div>
+    ${eventsSection}
+    ${communitySection}
     </div>
     ${demoLayer()}
     ${bottomNav()}
