@@ -179,7 +179,7 @@ def seed_emergency_services(db: Session) -> None:
     )
     if embassy:
         embassy.phone = "+4930 25926611"
-        embassy.website = "https://kenyaembassyberlin.de"
+        embassy.website = "https://kenyanembassyberlin.de/"
         embassy.address = "Rheinbabenallee 49, 14199 Berlin, Germany"
         embassy.map_url = "https://kenyanembassyberlin.de/contact-us/#"
         embassy.office_hours = "Mon-Fri 09:00-13:00"

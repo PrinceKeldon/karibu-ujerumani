@@ -601,7 +601,7 @@ const emergencyContacts = [
     phones: [
       { label: "Kenyan Embassy Berlin", number: "tel:+493025926611" },
     ],
-    url: { label: "kenyaembassyberlin.de ↗", href: "https://kenyaembassyberlin.de" },
+    url: { label: "kenyanembassyberlin.de ↗", href: "https://kenyanembassyberlin.de/" },
     address: {
       label: "Rheinbabenallee 49, 14199 Berlin, Germany",
       href: "https://kenyanembassyberlin.de/contact-us/#",
