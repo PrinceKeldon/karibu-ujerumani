@@ -45,6 +45,7 @@ let state = {
 
   // UI state
   communityTab: "For You",
+  communitySort: "newest",
   bookingsTab: "Upcoming",
   checklistExpanded: false,
   rathausQuery: { address: "", postcode: "" },
@@ -266,7 +267,7 @@ async function loadCommunity(tab) {
     if (tab === "Events") {
       await loadEvents(false);
     } else {
-      const data = await api.community.posts(tab);
+      const data = await api.community.posts(tab, state.communitySort);
       state.communityPosts = data;
     }
     render();
@@ -989,27 +990,36 @@ function community() {
   let content = "";
   if (state.communityTab === "Events") {
     if (!state.events.length) {
-      content = `<div class="loading-state">${icons.spinner} Loading events…</div>`;
+      content = `<div class="empty-state">
+        <h2>No community events yet</h2>
+        <p>Start a meetup, workshop, church gathering, sports day, or family-friendly event.</p>
+        <button class="primary" data-action="compose-event">Create event</button>
+      </div>`;
     } else {
       content = `<div class="event-stack">${state.events.map((e) => `<article class="event-card">
-        <div class="event-header"><span class="event-tag">${e.tag}</span><span class="event-rsvp">👥 ${e.rsvp_count} going</span></div>
-        <h2>${e.title}</h2>
-        <p>📅 ${e.date_str}</p>
-        <p>📍 ${e.location}</p>
-        <button class="primary event-btn" data-rsvp-id="${e.id}">RSVP to attend</button>
+        <div class="event-header"><span class="event-tag">${escapeHtml(e.tag)}</span><span class="event-rsvp">👥 ${e.rsvp_count} going</span></div>
+        <h2>${escapeHtml(e.title)}</h2>
+        <p>📅 ${escapeHtml(e.date_str)}</p>
+        <p>📍 ${escapeHtml(e.location)}</p>
+        <button class="primary event-btn ${e.is_rsvped ? "rsvped" : ""}" data-rsvp-id="${e.id}">${e.is_rsvped ? "Cancel RSVP" : "RSVP to attend"}</button>
       </article>`).join("")}</div>`;
     }
   } else {
     if (!state.communityPosts.length) {
-      content = `<div class="loading-state">${icons.spinner} Loading posts…</div>`;
+      const label = state.communityTab === "Questions" ? "Ask the first question" : state.communityTab === "Tips" ? "Share the first tip" : "Create the first post";
+      content = `<div class="empty-state">
+        <h2>No ${state.communityTab.toLowerCase()} yet</h2>
+        <p>Community posts appear here after members create them.</p>
+        <button class="primary" data-action="compose-post">${label}</button>
+      </div>`;
     } else {
       content = `<div class="post-stack">${state.communityPosts.map((p) => `<article class="post" data-post-id="${p.id}">
-        <header><b>${p.author_name}</b><span>${p.author_area} · ${timeAgo(p.created_at)}</span><button data-action="post-menu">•••</button></header>
-        <h2>${p.body}</h2>
+        <header><b>${escapeHtml(p.author_name)}</b><span>${escapeHtml(p.author_area)} · ${timeAgo(p.created_at)}</span></header>
+        <h2>${escapeHtml(p.body)}</h2>
         <footer>
-          <button data-like-id="${p.id}">♡ ${p.likes}</button>
-          <button data-action="comment-post">💬 ${p.comments}</button>
-          <button data-action="share-post">Share</button>
+          <button class="${p.is_liked ? "active" : ""}" data-like-id="${p.id}">${p.is_liked ? "♥" : "♡"} ${p.likes}</button>
+          <button data-comment-id="${p.id}">💬 ${p.comments}</button>
+          <button data-share-post-id="${p.id}">Share</button>
         </footer>
       </article>`).join("")}</div>`;
     }
@@ -1019,7 +1029,7 @@ function community() {
     "Community",
     `<div class="tabs">${tabs.map((t) => `<button class="${state.communityTab === t ? "active" : ""}" data-community-tab="${t}">${t}</button>`).join("")}</div>
     ${content}
-    <button class="fab" data-action="compose-post">${icons.plus}</button>`,
+    <button class="fab" data-action="${state.communityTab === "Events" ? "compose-event" : "compose-post"}">${icons.plus}</button>`,
     { right: iconButton("Sort", "☷", `data-action="community-sort"`) }
   );
 }
@@ -1030,6 +1040,19 @@ function timeAgo(iso) {
   if (diff < 3600) return Math.floor(diff / 60) + "m ago";
   if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
   return Math.floor(diff / 86400) + "d ago";
+}
+
+function formatCommunityDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function messages() {
@@ -1308,6 +1331,8 @@ app.addEventListener("click", (e) => {
   const emergencyTypeBtn = e.target.closest("[data-emergency-type]");
   const likeBtn = e.target.closest("[data-like-id]");
   const rsvpBtn = e.target.closest("[data-rsvp-id]");
+  const commentBtn = e.target.closest("[data-comment-id]");
+  const sharePostBtn = e.target.closest("[data-share-post-id]");
   const bookBtn = e.target.closest("[data-book-id]");
   const profileBtn = e.target.closest("[data-profile]");
   const officeBtn = e.target.closest("[data-office]");
@@ -1338,6 +1363,8 @@ app.addEventListener("click", (e) => {
   if (saveBtn) { handleSave(parseInt(saveBtn.dataset.saveId)); return; }
   if (bookBtn) { handleBook(parseInt(bookBtn.dataset.bookId)); return; }
   if (likeBtn) { handleLike(parseInt(likeBtn.dataset.likeId)); return; }
+  if (commentBtn) { openComments(parseInt(commentBtn.dataset.commentId, 10)); return; }
+  if (sharePostBtn) { shareCommunityPost(parseInt(sharePostBtn.dataset.sharePostId, 10)); return; }
   if (rsvpBtn) { handleRsvp(parseInt(rsvpBtn.dataset.rsvpId)); return; }
   if (caseBtn) { handleEmergencyCase(caseBtn.dataset.caseType, caseBtn.dataset.askPref === "true"); return; }
   if (listingBtn && !saveBtn) { handleOpenListing(parseInt(listingBtn.dataset.listingId)); return; }
@@ -1476,20 +1503,112 @@ function openHostMessageSheet() {
   );
 }
 
+function communityPostForm() {
+  const defaultTab = state.communityTab === "Questions" || state.communityTab === "Tips" ? state.communityTab : "Questions";
+  return `<form class="sheet-form" id="community-post-form">
+    <label>Post type
+      <select name="tab" required>
+        ${["Questions", "Tips", "For You"].map((tab) => `<option value="${tab}" ${tab === defaultTab ? "selected" : ""}>${tab === "For You" ? "General post" : tab}</option>`).join("")}
+      </select>
+    </label>
+    <label>${defaultTab === "Tips" ? "Tip" : "Question or post"}
+      <textarea name="body" rows="5" maxlength="600" required placeholder="Share something useful for Kenyans in Germany."></textarea>
+    </label>
+    <button class="primary" type="submit">Publish to community</button>
+  </form>`;
+}
+
+function communityEventForm() {
+  return `<form class="sheet-form" id="community-event-form">
+    <label>Event title
+      <input name="title" maxlength="120" required placeholder="e.g. Berlin newcomers meetup" />
+    </label>
+    <label>Date and time
+      <input name="date_str" type="datetime-local" required />
+    </label>
+    <label>Location
+      <input name="location" maxlength="160" required placeholder="Venue, city, or online link" />
+    </label>
+    <label>Category
+      <select name="tag">
+        ${["Community", "Meetup", "Workshop", "Sports", "Faith", "Family"].map((tag) => `<option value="${tag}">${tag}</option>`).join("")}
+      </select>
+    </label>
+    <button class="primary" type="submit">Create event</button>
+  </form>`;
+}
+
+function communitySortForm() {
+  return `<form class="sheet-form" id="community-sort-form">
+    <label>Sort posts
+      <select name="sort">
+        <option value="newest" ${state.communitySort === "newest" ? "selected" : ""}>Newest first</option>
+        <option value="most_helpful" ${state.communitySort === "most_helpful" ? "selected" : ""}>Most helpful</option>
+      </select>
+    </label>
+    <button class="primary" type="submit">Apply sorting</button>
+  </form>`;
+}
+
+async function openComments(postId) {
+  const post = state.communityPosts.find((p) => p.id === postId);
+  openSheet("Comments", `<div class="loading-state">${icons.spinner} Loading comments…</div>`, "Close");
+  try {
+    const comments = await api.community.comments(postId);
+    const rows = comments.length
+      ? comments.map((c) => `<article class="comment-row"><b>${escapeHtml(c.author_name)}</b><p>${escapeHtml(c.body)}</p><span>${timeAgo(c.created_at)}</span></article>`).join("")
+      : `<p class="sheet-copy">No replies yet. Add the first useful answer.</p>`;
+    openSheet(
+      "Comments",
+      `<div class="thread-list">${rows}</div>
+      <form class="sheet-form" id="community-comment-form">
+        <input type="hidden" name="post_id" value="${postId}" />
+        <label>Reply
+          <textarea name="body" rows="4" maxlength="500" required placeholder="Reply with practical community help."></textarea>
+        </label>
+        <button class="primary" type="submit">Post reply</button>
+      </form>`,
+      "Close"
+    );
+  } catch (err) {
+    openSheet("Comments", `<p class="sheet-copy">${escapeHtml(err.message || "Could not load comments")}</p>`, "Close");
+  }
+  if (post) post.comments = post.comments || 0;
+}
+
+async function shareCommunityPost(postId) {
+  const post = state.communityPosts.find((p) => p.id === postId);
+  const url = `${window.location.origin}${window.location.pathname}#community-post-${postId}`;
+  const title = "Karibu community post";
+  const text = post?.body || "Community post on Karibu Ujerumani";
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, text, url });
+    } else if (navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+      showToast("Community post link copied");
+    } else {
+      openSheet("Share post", `<p class="sheet-copy">${escapeHtml(url)}</p>`, "Close");
+    }
+  } catch {
+    showToast("Share cancelled");
+  }
+}
+
 async function handleLike(id) {
   try {
     const res = await api.community.like(id);
     const post = state.communityPosts.find((p) => p.id === id);
-    if (post) { post.likes = res.likes; render(); }
+    if (post) { post.likes = res.likes; post.is_liked = res.liked; render(); }
   } catch { showToast("Could not like post"); }
 }
 
 async function handleRsvp(id) {
   try {
     const res = await api.community.rsvp(id);
-    openSheet("RSVP confirmed! 🎉", `<p class="sheet-copy">You're going to <strong>${res.title}</strong>. Joining details will be sent to your Karibu inbox.</p><div class="demo-reply">See you there!</div>`, "Done");
     const ev = state.events.find((e) => e.id === id);
-    if (ev) { ev.rsvp_count = res.rsvp_count; render(); }
+    if (ev) { ev.rsvp_count = res.rsvp_count; ev.is_rsvped = res.rsvped; render(); }
+    showToast(res.rsvped ? `RSVP confirmed: ${res.title}` : `RSVP cancelled: ${res.title}`);
   } catch { showToast("Could not RSVP"); }
 }
 
@@ -1586,6 +1705,18 @@ function handleAction(action) {
     openSheet("Help & Support", supportCaseForm(), "Close");
     return;
   }
+  if (action === "compose-post") {
+    openSheet("Create community post", communityPostForm(), "Close");
+    return;
+  }
+  if (action === "compose-event") {
+    openSheet("Create event", communityEventForm(), "Close");
+    return;
+  }
+  if (action === "community-sort") {
+    openSheet("Community sorting", communitySortForm(), "Close");
+    return;
+  }
   if (action === "toggle-checklist") { state.checklistExpanded = !state.checklistExpanded; render(); return; }
   if (action === "logout") {
     clearToken();
@@ -1609,11 +1740,6 @@ function handleAction(action) {
     "filter-type": ["Type filter", "Private room or verified short stay."],
     "filter-more": ["More filters", "Verified hosts, near U-Bahn, Anmeldung friendly, Wi-Fi, and furnished."],
     "share-listing": ["Share listing", "Shareable link ready for WhatsApp or Messages."],
-    "post-menu": ["Post options", "Save, report, mute topic, or follow this neighbourhood."],
-    "comment-post": ["Comments", "Full thread with community replies and mentor answers."],
-    "share-post": ["Share post", "Community post link copied."],
-    "compose-post": ["Create post", "Composer ready: ask a question, share a tip, or post an event."],
-    "community-sort": ["Community sorting", "Sort by most helpful, newest, or nearby members."],
     "message-more": ["Inbox actions", "Open a support chat from Profile > Help & Support, or contact a host from a listing."],
     "booking-details": ["Booking details", "Full dates, host contact, check-in notes, and payment status."],
     "booking-filter": ["Booking filters", "Filter by status: Upcoming, Confirmed, Pending, Past."],
@@ -1825,6 +1951,68 @@ app.addEventListener("submit", async (e) => {
   if (e.target.id === "host-message-form") {
     const fd = new FormData(e.target);
     await sendDirectMessage(parseInt(fd.get("to_user_id"), 10), fd.get("body"));
+    return;
+  }
+
+  if (e.target.id === "community-post-form") {
+    const fd = new FormData(e.target);
+    try {
+      const post = await api.community.createPost({
+        tab: fd.get("tab"),
+        body: fd.get("body"),
+      });
+      state.sheet = null;
+      state.communityTab = post.tab;
+      await loadCommunity(state.communityTab);
+      showToast("Community post published");
+    } catch (err) {
+      showToast(err.message || "Could not publish post");
+    }
+    return;
+  }
+
+  if (e.target.id === "community-comment-form") {
+    const fd = new FormData(e.target);
+    const postId = parseInt(fd.get("post_id"), 10);
+    try {
+      await api.community.createComment(postId, { body: fd.get("body") });
+      const post = state.communityPosts.find((p) => p.id === postId);
+      if (post) post.comments = (post.comments || 0) + 1;
+      state.sheet = null;
+      render();
+      showToast("Reply posted");
+    } catch (err) {
+      showToast(err.message || "Could not post reply");
+    }
+    return;
+  }
+
+  if (e.target.id === "community-event-form") {
+    const fd = new FormData(e.target);
+    try {
+      const event = await api.community.createEvent({
+        title: fd.get("title"),
+        date_str: formatCommunityDate(fd.get("date_str")),
+        location: fd.get("location"),
+        tag: fd.get("tag"),
+      });
+      state.sheet = null;
+      state.communityTab = "Events";
+      state.events = [event, ...state.events.filter((e) => e.id !== event.id)];
+      render();
+      showToast("Community event created");
+    } catch (err) {
+      showToast(err.message || "Could not create event");
+    }
+    return;
+  }
+
+  if (e.target.id === "community-sort-form") {
+    const fd = new FormData(e.target);
+    state.communitySort = fd.get("sort") || "newest";
+    state.sheet = null;
+    await loadCommunity(state.communityTab);
+    showToast("Community sorting updated");
     return;
   }
 

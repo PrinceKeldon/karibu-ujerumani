@@ -124,15 +124,43 @@ class CommunityPost(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class CommunityComment(Base):
+    __tablename__ = "community_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey("community_posts.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    author_name = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CommunityPostLike(Base):
+    __tablename__ = "community_post_likes"
+
+    post_id = Column(Integer, ForeignKey("community_posts.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Event(Base):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     title = Column(String, nullable=False)
     date_str = Column(String, nullable=False)
     location = Column(String, nullable=False)
     rsvp_count = Column(Integer, default=0)
     tag = Column(String, default="Event")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EventRsvp(Base):
+    __tablename__ = "event_rsvps"
+
+    event_id = Column(Integer, ForeignKey("events.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

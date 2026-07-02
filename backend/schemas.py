@@ -197,8 +197,30 @@ class CommunityPostOut(BaseModel):
     likes: int
     comments: int
     created_at: datetime
+    is_liked: bool = False
 
     model_config = {"from_attributes": True}
+
+
+class CommunityCommentCreate(BaseModel):
+    body: str
+
+
+class CommunityCommentOut(BaseModel):
+    id: int
+    post_id: int
+    author_name: str
+    body: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EventCreate(BaseModel):
+    title: str
+    date_str: str
+    location: str
+    tag: str = "Community"
 
 
 class EventOut(BaseModel):
@@ -208,6 +230,7 @@ class EventOut(BaseModel):
     location: str
     rsvp_count: int
     tag: str
+    is_rsvped: bool = False
 
     model_config = {"from_attributes": True}
 

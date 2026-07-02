@@ -87,11 +87,14 @@ export const api = {
     },
   },
   community: {
-    posts: (tab = "For You") =>
-      request(`/community/posts?tab=${encodeURIComponent(tab)}`),
+    posts: (tab = "For You", sort = "newest") =>
+      request(`/community/posts?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}`),
     createPost: (d) => request("/community/posts", { method: "POST", body: d }),
     like: (id) => request(`/community/posts/${id}/like`, { method: "POST" }),
+    comments: (id) => request(`/community/posts/${id}/comments`),
+    createComment: (id, d) => request(`/community/posts/${id}/comments`, { method: "POST", body: d }),
     events: () => request("/community/events"),
+    createEvent: (d) => request("/community/events", { method: "POST", body: d }),
     rsvp: (id) => request(`/community/events/${id}/rsvp`, { method: "POST" }),
   },
   checklist: {

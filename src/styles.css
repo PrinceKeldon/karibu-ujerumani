@@ -767,6 +767,7 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
 .post header, .post footer { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
 .post header button, .post footer button { margin-left: auto; }
 .post footer button { margin-left: 0; color: #334155; font-weight: 700; }
+.post footer button.active { color: var(--red); }
 .post footer button:last-child { margin-left: auto; }
 .post h2 { margin: 22px 0; font-size: 18px; line-height: 1.25; }
 .fab {
@@ -1420,6 +1421,18 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
 .event-card h2 { font-size: 17px; margin-bottom: 8px; line-height: 1.25; }
 .event-card p { color: var(--muted); font-size: 13px; margin-bottom: 5px; }
 .event-btn { width: 100%; margin-top: 13px; height: 46px; }
+.event-btn.rsvped { background: #334155; box-shadow: none; }
+
+.thread-list { display: grid; gap: 10px; margin-bottom: 14px; }
+.comment-row {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.comment-row b { display: block; margin-bottom: 4px; font-size: 13px; }
+.comment-row p { margin: 0 0 6px; color: #334155; line-height: 1.45; }
+.comment-row span { color: var(--muted); font-size: 11px; font-weight: 700; }
 
 /* ── Checklist settled section ───────────────────────────────── */
 .settled-title { color: var(--green); }

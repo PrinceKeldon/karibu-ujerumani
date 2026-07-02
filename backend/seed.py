@@ -98,6 +98,7 @@ def ensure_schema_compatibility() -> None:
         return
     listing_columns = {c["name"] for c in inspector.get_columns("listings")}
     user_columns = {c["name"] for c in inspector.get_columns("users")} if "users" in table_names else set()
+    event_columns = {c["name"] for c in inspector.get_columns("events")} if "events" in table_names else set()
     statements = []
     if "state_id" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN state_id INTEGER")
@@ -107,6 +108,8 @@ def ensure_schema_compatibility() -> None:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_url TEXT")
     if "profile_photo_path" not in user_columns:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_path TEXT")
+    if "events" in table_names and "user_id" not in event_columns:
+        statements.append("ALTER TABLE events ADD COLUMN user_id INTEGER")
     with engine.begin() as conn:
         for statement in statements:
             conn.execute(text(statement))
