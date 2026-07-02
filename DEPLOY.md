@@ -2,6 +2,12 @@
 
 ## URL wiring
 
+Canonical public app URL:
+
+```text
+https://www.karibujerumani.online/
+```
+
 The frontend resolves the API base in this order:
 
 1. `window.KARIBU_API_BASE`, if set before `src/app.js` loads.
@@ -9,7 +15,14 @@ The frontend resolves the API base in this order:
 3. Local/LAN preview fallback: `http://<current-host>:8000`.
 4. Production fallback: same origin as the frontend.
 
-For a same-domain deployment, route API traffic through the same origin as the PWA.
+The apex domain `https://karibujerumani.online/` redirects to the `www` URL above.
+
+For this Vercel deployment, `vercel.json` routes backend paths through the FastAPI entrypoint at `api/index.py`, so the frontend should call the same origin:
+
+```text
+https://www.karibujerumani.online/auth/register
+https://www.karibujerumani.online/health
+```
 
 For a split deployment, set this before the app module:
 
@@ -20,6 +33,28 @@ For a split deployment, set this before the app module:
 ```
 
 Do not leave production pointing at `127.0.0.1` or `localhost`; those URLs only work on the developer machine.
+
+If the backend is served on a separate public API host, set:
+
+```html
+<script>
+  window.KARIBU_API_BASE = "https://api.karibujerumani.online";
+</script>
+```
+
+If the backend is reverse-proxied under the same domain, no override is needed.
+
+## Required hosted backend environment
+
+Set these in Vercel project environment variables:
+
+```text
+DATABASE_URL=<Supabase transaction pooler URL>
+SECRET_KEY=<strong production secret>
+GEMINI_API_KEY=<optional, for Karibu Chat>
+SUPABASE_URL=https://nmhqvnguhpktkcoyqwlc.supabase.co
+SEED_DEMO_DATA=false
+```
 
 ## Current local preview
 

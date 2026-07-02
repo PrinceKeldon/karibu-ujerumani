@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     seed_demo_data: bool = False
     cors_origin_regex: str = (
         r"https?://("
+        r"(www\.)?karibujerumani\.online|"
         r"localhost|127\.0\.0\.1|0\.0\.0\.0|"
         r"10\.\d+\.\d+\.\d+|"
         r"192\.168\.\d+\.\d+|"

@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    { "source": "/health", "destination": "/api/index.py" },
+    { "source": "/auth/:path*", "destination": "/api/index.py" },
+    { "source": "/listings/:path*", "destination": "/api/index.py" },
+    { "source": "/geo/:path*", "destination": "/api/index.py" },
+    { "source": "/community/:path*", "destination": "/api/index.py" },
+    { "source": "/checklist/:path*", "destination": "/api/index.py" },
+    { "source": "/messages/:path*", "destination": "/api/index.py" },
+    { "source": "/bookings/:path*", "destination": "/api/index.py" },
+    { "source": "/ai/:path*", "destination": "/api/index.py" },
+    { "source": "/support/:path*", "destination": "/api/index.py" }
+  ]
+}
