@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-api-diagnostics";
+const VERSION = "mvp0.1-20260702-url-alignment";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 
@@ -8,6 +8,7 @@ const STATIC_ASSETS = [
   "/offline.html",
   "/manifest.webmanifest",
   "/icons/icon.svg",
+  "/src/config.js",
   "/src/app.js",
   "/src/api.js",
   "/src/styles.css"
@@ -59,12 +60,25 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
-  if (url.origin === "http://127.0.0.1:8000" || url.origin === "http://localhost:8000") {
+  if (isApiUrl(url)) {
     if (CACHEABLE_API_PATHS.some((path) => url.pathname.startsWith(path))) {
       event.respondWith(networkFirst(request, API_CACHE));
     }
   }
 });
+
+function isLocalOrPrivateHost(hostname) {
+  return ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname)
+    || /^10\./.test(hostname)
+    || /^192\.168\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+}
+
+function isApiUrl(url) {
+  if (url.origin === self.location.origin) return true;
+  if (url.port === "8000" && isLocalOrPrivateHost(url.hostname)) return true;
+  return url.protocol === "https:";
+}
 
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
