@@ -112,6 +112,7 @@ export const api = {
   messages: {
     list: () => request("/messages"),
     send: (d) => request("/messages", { method: "POST", body: d }),
+    delete: (id) => request(`/messages/${id}`, { method: "DELETE" }),
   },
   bookings: {
     list: () => request("/bookings/me"),
@@ -122,8 +123,7 @@ export const api = {
       request("/ai/chat", { method: "POST", body: { message, history } }),
   },
   support: {
-    createCase: (case_type, description, contact_pref) =>
-      request("/support/cases", { method: "POST", body: { case_type, description, contact_pref } }),
+    createCase: (d) => request("/support/cases", { method: "POST", body: d }),
     myCases: () => request("/support/cases/mine"),
   },
   admin: {
@@ -136,14 +136,18 @@ export const api = {
     setEventStatus: (id, status, note) =>
       request(`/admin-api/events/${id}/status`, { method: "POST", body: { status, note } }),
     supportCases: (status = "open") => request(`/admin-api/support/cases?status=${encodeURIComponent(status)}`),
-    updateSupportCase: (id, status, note) =>
-      request(`/admin-api/support/cases/${id}`, { method: "POST", body: { status, note } }),
+    updateSupportCase: (id, status, note, message_body = null) =>
+      request(`/admin-api/support/cases/${id}`, { method: "POST", body: { status, note, message_body } }),
     invites: (status = "pending") => request(`/admin-api/moderator-invites?status=${encodeURIComponent(status)}`),
     inviteModerator: (email, permissions = "{}") =>
       request("/admin-api/moderator-invites", { method: "POST", body: { email, permissions } }),
     approveInvite: (id) => request(`/admin-api/moderator-invites/${id}/approve`, { method: "POST" }),
     announcements: () => request("/admin-api/announcements"),
     createAnnouncement: (d) => request("/admin-api/announcements", { method: "POST", body: d }),
+    updateAnnouncement: (id, d) => request(`/admin-api/announcements/${id}`, { method: "PATCH", body: d }),
+    deleteAnnouncement: (id) => request(`/admin-api/announcements/${id}`, { method: "DELETE" }),
+    messages: () => request("/admin-api/messages"),
+    deleteMessage: (id) => request(`/admin-api/messages/${id}`, { method: "DELETE" }),
     audit: () => request("/admin-api/audit"),
   },
 };

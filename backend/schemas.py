@@ -285,6 +285,8 @@ class MessageCreate(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    message_id: int
+    other_user_id: int
     name: str
     body: str
     is_read: bool
@@ -296,6 +298,9 @@ class SupportCaseCreate(BaseModel):
     case_type: str
     description: Optional[str] = None
     contact_pref: Optional[str] = None
+    contact_phone: Optional[str] = None
+    location: Optional[str] = None
+    request_summary: Optional[str] = None
 
 
 class SupportCaseOut(BaseModel):
@@ -356,9 +361,14 @@ class ModeratorInviteOut(BaseModel):
 class SupportCaseAdminOut(BaseModel):
     id: int
     user_id: int
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
     case_type: str
     description: Optional[str] = None
     contact_pref: Optional[str] = None
+    contact_phone: Optional[str] = None
+    location: Optional[str] = None
+    request_summary: Optional[str] = None
     case_ref: str
     status: str
     created_at: datetime
@@ -369,6 +379,7 @@ class SupportCaseAdminOut(BaseModel):
 class SupportCaseUpdate(BaseModel):
     status: str
     note: Optional[str] = None
+    message_body: Optional[str] = None
 
 
 class AnnouncementCreate(BaseModel):
@@ -377,6 +388,12 @@ class AnnouncementCreate(BaseModel):
     audience: str = "all"
     channel: str = "community"
     publish_now: bool = True
+
+
+class AnnouncementUpdate(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+    status: Optional[str] = None
 
 
 class AnnouncementOut(BaseModel):
@@ -388,6 +405,18 @@ class AnnouncementOut(BaseModel):
     status: str
     created_by: int
     published_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MessageAdminOut(BaseModel):
+    id: int
+    from_user_id: int
+    from_name: str
+    to_user_id: int
+    body: str
+    is_read: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -179,13 +179,14 @@ def admin_support_cases(
     db: Session = Depends(get_db),
     staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
 ):
-    return (
+    cases = (
         db.query(models.SupportCase)
         .filter(models.SupportCase.status == status)
         .order_by(models.SupportCase.created_at.desc())
         .limit(100)
         .all()
     )
+    return [support_case_out(case, db) for case in cases]
 
 
 @router.post("/support/cases/{case_id}", response_model=schemas.SupportCaseAdminOut)
@@ -202,10 +203,17 @@ def update_support_case(
     case.status = data.status
     if data.note:
         db.add(models.SupportCaseNote(case_id=case_id, admin_user_id=user.id, note=data.note))
+    if data.message_body:
+        db.add(models.Message(
+            from_user_id=user.id,
+            from_name="Karibu Support",
+            to_user_id=case.user_id,
+            body=data.message_body,
+        ))
     audit(db, user.id, "support_case_update", "support_case", case_id, data.note or data.status)
     db.commit()
     db.refresh(case)
-    return case
+    return support_case_out(case, db)
 
 
 @router.post("/moderator-invites", response_model=schemas.ModeratorInviteOut)
@@ -301,6 +309,25 @@ def update_moderator_permissions(
     return target
 
 
+def support_case_out(case: models.SupportCase, db: Session) -> schemas.SupportCaseAdminOut:
+    user = db.query(models.User).filter(models.User.id == case.user_id).first()
+    return schemas.SupportCaseAdminOut(
+        id=case.id,
+        user_id=case.user_id,
+        user_name=user.full_name if user else None,
+        user_email=user.email if user else None,
+        case_type=case.case_type,
+        description=case.description,
+        contact_pref=case.contact_pref,
+        contact_phone=case.contact_phone,
+        location=case.location,
+        request_summary=case.request_summary,
+        case_ref=case.case_ref,
+        status=case.status,
+        created_at=case.created_at,
+    )
+
+
 @router.post("/announcements", response_model=schemas.AnnouncementOut)
 def create_announcement(
     data: schemas.AnnouncementCreate,
@@ -344,6 +371,72 @@ def list_announcements(
     staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
 ):
     return db.query(models.Announcement).order_by(models.Announcement.created_at.desc()).limit(100).all()
+
+
+@router.patch("/announcements/{announcement_id}", response_model=schemas.AnnouncementOut)
+def update_announcement(
+    announcement_id: int,
+    data: schemas.AnnouncementUpdate,
+    db: Session = Depends(get_db),
+    staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
+):
+    user, _role = staff
+    ann = db.query(models.Announcement).filter(models.Announcement.id == announcement_id).first()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    if data.title is not None and data.title.strip():
+        ann.title = data.title.strip()
+    if data.body is not None and data.body.strip():
+        ann.body = data.body.strip()
+    if data.status is not None:
+        if data.status not in {"draft", "published", "archived"}:
+            raise HTTPException(status_code=400, detail="Invalid announcement status")
+        ann.status = data.status
+        ann.published_at = datetime.utcnow() if data.status == "published" and ann.published_at is None else ann.published_at
+    audit(db, user.id, "announcement_updated", "announcement", announcement_id, ann.title)
+    db.commit()
+    db.refresh(ann)
+    return ann
+
+
+@router.delete("/announcements/{announcement_id}")
+def delete_announcement(
+    announcement_id: int,
+    db: Session = Depends(get_db),
+    staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
+):
+    user, _role = staff
+    ann = db.query(models.Announcement).filter(models.Announcement.id == announcement_id).first()
+    if not ann:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    audit(db, user.id, "announcement_deleted", "announcement", announcement_id, ann.title)
+    db.delete(ann)
+    db.commit()
+    return {"deleted": True, "id": announcement_id}
+
+
+@router.get("/messages", response_model=List[schemas.MessageAdminOut])
+def admin_messages(
+    db: Session = Depends(get_db),
+    staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
+):
+    return db.query(models.Message).order_by(models.Message.created_at.desc()).limit(100).all()
+
+
+@router.delete("/messages/{message_id}")
+def admin_delete_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
+):
+    user, _role = staff
+    msg = db.query(models.Message).filter(models.Message.id == message_id).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    audit(db, user.id, "message_deleted", "message", message_id, msg.body[:120])
+    db.delete(msg)
+    db.commit()
+    return {"deleted": True, "id": message_id}
 
 
 @router.get("/audit", response_model=List[schemas.AdminAuditOut])

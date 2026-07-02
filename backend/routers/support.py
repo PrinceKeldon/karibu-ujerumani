@@ -33,6 +33,9 @@ def create_case(
         case_type=data.case_type,
         description=data.description,
         contact_pref=data.contact_pref,
+        contact_phone=data.contact_phone,
+        location=data.location,
+        request_summary=data.request_summary,
         case_ref=_gen_ref(),
         status="open",
     )

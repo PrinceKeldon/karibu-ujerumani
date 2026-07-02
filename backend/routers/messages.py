@@ -30,6 +30,8 @@ def get_conversations(
             other_user = db.query(models.User).filter(models.User.id == other_id).first()
             other_name = other_user.full_name if other_user else m.from_name
             seen[other_id] = {
+                "message_id": m.id,
+                "other_user_id": other_id,
                 "name": m.from_name if is_incoming else "You → " + other_name,
                 "body": m.body,
                 "is_read": m.is_read,
@@ -58,3 +60,25 @@ def send_message(
     db.commit()
     db.refresh(msg)
     return {"id": msg.id, "sent": True}
+
+
+@router.delete("/{message_id}")
+def delete_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    msg = (
+        db.query(models.Message)
+        .filter(
+            models.Message.id == message_id,
+            (models.Message.from_user_id == current_user.id)
+            | (models.Message.to_user_id == current_user.id),
+        )
+        .first()
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    db.delete(msg)
+    db.commit()
+    return {"deleted": True, "id": message_id}

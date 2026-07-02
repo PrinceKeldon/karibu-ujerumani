@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-admin-route-fix";
+const VERSION = "mvp0.1-20260702-support-admin-actions";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 

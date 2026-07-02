@@ -78,6 +78,7 @@ let state = {
     supportCases: [],
     invites: [],
     announcements: [],
+    messages: [],
     audit: [],
   },
 };
@@ -163,6 +164,7 @@ function setScreen(screen, opts = {}) {
     if (!state.communityPosts.length) loadCommunity("For You");
     if (!state.events.length) loadEvents();
     if (!state.announcements.length) loadAnnouncements(false);
+    if (!state.messagesLoaded) loadMessages();
   }
   if (screen === screens.search) loadListings();
   if (screen === screens.community) loadCommunity(state.communityTab);
@@ -333,7 +335,7 @@ async function loadAnnouncements(shouldRender = true) {
 
 async function loadAdminData() {
   try {
-    const [me, summary, listings, events, supportCases, invites, announcements, audit] = await Promise.all([
+    const [me, summary, listings, events, supportCases, invites, announcements, messages, audit] = await Promise.all([
       api.admin.me(),
       api.admin.summary(),
       api.admin.listings("pending"),
@@ -341,9 +343,10 @@ async function loadAdminData() {
       api.admin.supportCases("open"),
       api.admin.invites("pending"),
       api.admin.announcements(),
+      api.admin.messages(),
       api.admin.audit(),
     ]);
-    state.admin = { loaded: true, me, summary, listings, events, supportCases, invites, announcements, audit };
+    state.admin = { loaded: true, me, summary, listings, events, supportCases, invites, announcements, messages, audit };
     render();
   } catch (err) {
     state.admin = { ...state.admin, loaded: true };
@@ -753,6 +756,7 @@ function listingCard(l) {
 
 function home() {
   const firstName = state.user?.full_name?.split(" ")[0] || "there";
+  const unreadMessages = state.conversations.filter((c) => !c.is_read).length;
   const topListings = state.listings.slice(0, 3);
   const cityName = state.selectedCity?.name || "Berlin";
   const tierCities = state.cities.filter((c) => c.is_tier_1 || c.is_tier_2).slice(0, 8);
@@ -787,7 +791,7 @@ function home() {
     <div class="screen-body">
     <div class="home-head">
       <div><h1>Karibu, ${firstName} 👋</h1><p>📍 ${state.locationStatus || cityName}</p></div>
-      <button class="bell" data-action="notifications">${icons.bell}</button>
+      <button class="bell" data-screen="${screens.messages}" aria-label="Messages">${unreadMessages ? `<span class="nav-badge">${unreadMessages}</span>` : ""}${icons.bell}</button>
     </div>
     <button class="city-pill" data-action="city-selector">🌍 ${cityName} <span>Change city</span></button>
     <button class="ai-banner" data-screen="${screens.assistant}">
@@ -1128,7 +1132,7 @@ function formatCommunityDate(value) {
 
 function messages() {
   const rows = state.conversations.length
-    ? state.conversations.map((c) => `<button class="message-row"><span class="avatar">${c.name[0].toUpperCase()}</span><div><b>${c.name}</b><p>${c.body}</p></div><time>${c.time}</time>${c.unread_count ? `<em>${c.unread_count}</em>` : ""}</button>`).join("")
+    ? state.conversations.map((c) => `<article class="message-row"><span class="avatar">${c.name[0].toUpperCase()}</span><div><b>${escapeHtml(c.name)}</b><p>${escapeHtml(c.body)}</p></div><time>${escapeHtml(c.time)}</time>${c.unread_count ? `<em>${c.unread_count}</em>` : ""}<button class="message-delete" data-delete-message="${c.message_id}" aria-label="Delete message">×</button></article>`).join("")
     : state.messagesLoaded
       ? `<div class="empty-state"><p>No messages yet.</p><button class="primary" data-screen="${screens.search}">Find a host</button></div>`
       : `<div class="loading-state">${icons.spinner} Loading messages…</div>`;
@@ -1245,12 +1249,43 @@ function adminDashboard() {
     <div class="admin-actions"><button data-admin-event="${e.id}" data-status="approved">Approve</button><button data-admin-event="${e.id}" data-status="rejected">Reject</button><button data-admin-event="${e.id}" data-status="suspended">Suspend</button></div>
   </article>`;
   const caseRow = (c) => `<article class="admin-row">
-    <div><b>${escapeHtml(c.case_ref)} · ${escapeHtml(c.case_type)}</b><span>${escapeHtml(c.contact_pref || "No preference")} · User #${c.user_id}</span></div>
-    <div class="admin-actions"><button data-admin-case="${c.id}" data-status="assigned">Assign</button><button data-admin-case="${c.id}" data-status="resolved">Resolve</button><button data-admin-case="${c.id}" data-status="escalated">Escalate</button></div>
+    <div>
+      <b>${escapeHtml(c.case_ref)} · ${escapeHtml(c.case_type)}</b>
+      <span>${escapeHtml(c.user_name || "User")} · ${escapeHtml(c.user_email || `#${c.user_id}`)}</span>
+      <span>${escapeHtml(c.contact_phone || "No phone")} · ${escapeHtml(c.location || "No location")} · ${escapeHtml(c.contact_pref || "No preference")}</span>
+      <span>${escapeHtml(c.request_summary || c.description || "No request summary")}</span>
+    </div>
+    <form class="admin-case-form" data-admin-case-form="${c.id}">
+      <textarea name="message_body" rows="2" placeholder="Write a message to the user or note callback action"></textarea>
+      <div class="admin-actions">
+        <button type="submit" name="status" value="assigned">Log callback</button>
+        <button type="submit" name="status" value="escalated">Escalate</button>
+        <button type="submit" name="status" value="resolved">Resolve</button>
+      </div>
+    </form>
   </article>`;
   const inviteRow = (i) => `<article class="admin-row">
     <div><b>${escapeHtml(i.email)}</b><span>Invited by #${i.invited_by} · ${escapeHtml(i.status)}</span></div>
     <div class="admin-actions">${a.me.role === "admin" ? `<button data-admin-invite="${i.id}">Approve</button>` : "<span>Awaiting admin</span>"}</div>
+  </article>`;
+  const announcementRow = (ann) => `<article class="admin-row admin-edit-row">
+    <form class="admin-inline-form admin-announcement-edit" data-admin-announcement-form="${ann.id}">
+      <input name="title" value="${escapeHtml(ann.title)}" aria-label="Announcement title" required />
+      <input name="body" value="${escapeHtml(ann.body)}" aria-label="Announcement body" required />
+      <select name="status" aria-label="Announcement status">
+        ${["draft", "published", "archived"].map((status) => `<option value="${status}" ${ann.status === status ? "selected" : ""}>${status}</option>`).join("")}
+      </select>
+      <button type="submit">Save</button>
+      <button type="button" data-admin-announcement-delete="${ann.id}">Delete</button>
+    </form>
+  </article>`;
+  const adminMessageRow = (m) => `<article class="admin-row">
+    <div>
+      <b>${escapeHtml(m.from_name || "Message")}</b>
+      <span>From #${escapeHtml(m.from_user_id)} to #${escapeHtml(m.to_user_id)} · ${new Date(m.created_at).toLocaleString()}</span>
+      <span>${escapeHtml(m.body)}</span>
+    </div>
+    <div class="admin-actions"><button data-admin-message-delete="${m.id}">Delete</button></div>
   </article>`;
   return shell(
     "Admin",
@@ -1271,7 +1306,9 @@ function adminDashboard() {
       <h2>Moderator Invites</h2>
       <form class="admin-inline-form" id="admin-invite-form">
         <input name="email" type="email" placeholder="moderator@email.com" required />
-        <input name="permissions" placeholder='{"listings":true,"community":true}' />
+        <label><input name="perm_listings" type="checkbox" checked /> Listings</label>
+        <label><input name="perm_community" type="checkbox" checked /> Community</label>
+        <label><input name="perm_support" type="checkbox" /> Support</label>
         <button class="primary" type="submit">Invite moderator</button>
       </form>
       ${a.invites.length ? a.invites.map(inviteRow).join("") : `<p class="admin-empty">No pending moderator invites.</p>`}
@@ -1284,8 +1321,9 @@ function adminDashboard() {
         <div class="finder-row"><select name="channel"><option value="community">Community board</option><option value="messages">Messages</option></select><select name="audience"><option value="all">All users</option><option value="newcomers">Newcomers</option><option value="verified">Verified users</option></select></div>
         <button class="primary" type="submit">Publish announcement</button>
       </form>
-      ${a.announcements.slice(0, 4).map((ann) => `<article class="admin-row"><div><b>${escapeHtml(ann.title)}</b><span>${escapeHtml(ann.channel)} · ${escapeHtml(ann.status)}</span></div></article>`).join("")}
+      ${a.announcements.slice(0, 6).map(announcementRow).join("") || `<p class="admin-empty">No announcements yet.</p>`}
     </section>
+    <section class="admin-panel"><h2>Message Moderation</h2>${a.messages.slice(0, 8).map(adminMessageRow).join("") || `<p class="admin-empty">No user messages yet.</p>`}</section>
     <section class="admin-panel"><h2>Audit Log</h2>${a.audit.slice(0, 8).map((log) => `<article class="admin-row"><div><b>${escapeHtml(log.action)}</b><span>${escapeHtml(log.target_type)} #${escapeHtml(log.target_id || "-")} · ${new Date(log.created_at).toLocaleString()}</span></div></article>`).join("") || `<p class="admin-empty">No audit entries yet.</p>`}</section>`,
     { hideNav: true, className: "admin-screen" }
   );
@@ -1510,19 +1548,14 @@ app.addEventListener("click", (e) => {
   const carouselBtn = e.target.closest("[data-carousel-listing]");
   const amenityRemoveBtn = e.target.closest("[data-amenity-remove]");
   const cityBtn = e.target.closest("[data-city-id]");
+  const deleteMessageBtn = e.target.closest("[data-delete-message]");
   const adminListingBtn = e.target.closest("[data-admin-listing]");
   const adminEventBtn = e.target.closest("[data-admin-event]");
   const adminCaseBtn = e.target.closest("[data-admin-case]");
   const adminInviteBtn = e.target.closest("[data-admin-invite]");
+  const adminAnnouncementDeleteBtn = e.target.closest("[data-admin-announcement-delete]");
+  const adminMessageDeleteBtn = e.target.closest("[data-admin-message-delete]");
 
-  const prefBtn = e.target.closest("[data-pref]");
-  if (prefBtn && state.sheet?._pendingCase) {
-    const caseType = state.sheet._pendingCase;
-    const pref = prefBtn.dataset.pref;
-    state.sheet = null;
-    submitEmergencyCase(caseType, pref);
-    return;
-  }
   if (amenityRemoveBtn) {
     state.listRoomAmenities = state.listRoomAmenities.filter((a) => a !== amenityRemoveBtn.dataset.amenityRemove);
     updateAmenityPickerDom();
@@ -1530,10 +1563,13 @@ app.addEventListener("click", (e) => {
   }
   if (carouselBtn) { openCarousel(parseInt(carouselBtn.dataset.carouselListing, 10)); return; }
   if (cityBtn) { selectCity(parseInt(cityBtn.dataset.cityId, 10)); return; }
+  if (deleteMessageBtn) { deleteMessage(parseInt(deleteMessageBtn.dataset.deleteMessage, 10)); return; }
   if (adminListingBtn) { updateAdminListing(parseInt(adminListingBtn.dataset.adminListing, 10), adminListingBtn.dataset.status); return; }
   if (adminEventBtn) { updateAdminEvent(parseInt(adminEventBtn.dataset.adminEvent, 10), adminEventBtn.dataset.status); return; }
   if (adminCaseBtn) { updateAdminCase(parseInt(adminCaseBtn.dataset.adminCase, 10), adminCaseBtn.dataset.status); return; }
   if (adminInviteBtn) { approveAdminInvite(parseInt(adminInviteBtn.dataset.adminInvite, 10)); return; }
+  if (adminAnnouncementDeleteBtn) { deleteAdminAnnouncement(parseInt(adminAnnouncementDeleteBtn.dataset.adminAnnouncementDelete, 10)); return; }
+  if (adminMessageDeleteBtn) { deleteAdminMessage(parseInt(adminMessageDeleteBtn.dataset.adminMessageDelete, 10)); return; }
   if (actionBtn && (!actionBtn.classList.contains("demo-backdrop") || e.target === actionBtn)) {
     handleAction(actionBtn.dataset.action);
     return;
@@ -1658,6 +1694,17 @@ async function sendDirectMessage(toUserId, body, successTitle = "Message sent") 
     state.sheet._onClose = () => setScreen(screens.messages);
   } catch (e) {
     showToast(e.message || "Could not send message");
+  }
+}
+
+async function deleteMessage(id) {
+  try {
+    await api.messages.delete(id);
+    state.conversations = state.conversations.filter((c) => c.message_id !== id);
+    render();
+    showToast("Message deleted");
+  } catch (err) {
+    showToast(err.message || "Could not delete message");
   }
 }
 
@@ -1823,9 +1870,9 @@ async function updateAdminEvent(id, status) {
   }
 }
 
-async function updateAdminCase(id, status) {
+async function updateAdminCase(id, status, messageBody = null) {
   try {
-    await api.admin.updateSupportCase(id, status, `Set from admin dashboard to ${status}`);
+    await api.admin.updateSupportCase(id, status, `Set from admin dashboard to ${status}`, messageBody);
     showToast(`Case ${status}`);
     loadAdminData();
   } catch (err) {
@@ -1840,6 +1887,36 @@ async function approveAdminInvite(id) {
     loadAdminData();
   } catch (err) {
     showToast(err.message || "Could not approve invite");
+  }
+}
+
+async function updateAdminAnnouncement(id, data) {
+  try {
+    await api.admin.updateAnnouncement(id, data);
+    showToast("Announcement updated");
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not update announcement");
+  }
+}
+
+async function deleteAdminAnnouncement(id) {
+  try {
+    await api.admin.deleteAnnouncement(id);
+    showToast("Announcement deleted");
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not delete announcement");
+  }
+}
+
+async function deleteAdminMessage(id) {
+  try {
+    await api.admin.deleteMessage(id);
+    showToast("Message deleted");
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not delete message");
   }
 }
 
@@ -1862,32 +1939,17 @@ const CASE_LABELS = {
   mental_health: "Mental health support",
 };
 
-const CONTACT_PREF_SHEET = `
-  <p class="sheet-copy" style="margin-bottom:14px">How would you like to be contacted by the responder?</p>
-  <div class="pref-options">
-    <button class="pref-opt" data-pref="phone">📞 Phone call</button>
-    <button class="pref-opt" data-pref="whatsapp">💬 WhatsApp</button>
-    <button class="pref-opt" data-pref="in_person">🤝 In person</button>
-  </div>`;
-
 async function handleEmergencyCase(caseType, askPref = false) {
-  if (askPref) {
-    // Show contact preference sheet first, then submit on selection
-    openSheet(CASE_LABELS[caseType] || "Support request", CONTACT_PREF_SHEET, "Skip — submit now");
-    state.sheet._pendingCase = caseType;
-    state.sheet._onClose = () => submitEmergencyCase(caseType, null);
-    return;
-  }
-  await submitEmergencyCase(caseType, null);
+  openSheet(CASE_LABELS[caseType] || "Support request", supportCaseForm(caseType), "Close");
 }
 
-async function submitEmergencyCase(caseType, contactPref) {
+async function submitEmergencyCase(data) {
   try {
-    const res = await api.support.createCase(caseType, null, contactPref);
-    const label = CASE_LABELS[caseType] || "Support case";
+    const res = await api.support.createCase(data);
+    const label = CASE_LABELS[data.case_type] || "Support case";
     openSheet(
       "Case opened ✓",
-      `<p class="sheet-copy">Your <strong>${label}</strong> has been logged. A Karibu responder will reach out ${contactPref ? "via " + contactPref : "shortly"}.</p>
+      `<p class="sheet-copy">Your <strong>${label}</strong> has been logged. A Karibu responder will follow up through ${data.contact_pref || "in-app message"}.</p>
       <div class="case-number">${res.case_ref}</div>
       <p class="sheet-copy" style="margin-top:12px;font-size:12px">Keep this reference number. You can track the case in your messages.</p>`,
       "Done"
@@ -2051,19 +2113,30 @@ function profileSheet(item) {
   return `<p class="sheet-copy"></p>`;
 }
 
-function supportCaseForm() {
+function supportCaseForm(defaultType = "admin") {
   return `<form class="sheet-form" id="support-case-form">
     <label>What do you need help with?
       <select name="case_type">
-        <option value="admin">Lost documents / urgent paperwork</option>
-        <option value="pastoral">Care and support</option>
-        <option value="embassy">Embassy support</option>
-        <option value="short_stay">Emergency short-stay</option>
-        <option value="mental_health">Mental health support</option>
+        ${[
+          ["admin", "Lost documents / urgent paperwork"],
+          ["pastoral", "Care and support"],
+          ["embassy", "Embassy support"],
+          ["short_stay", "Emergency short-stay"],
+          ["mental_health", "Mental health support"],
+        ].map(([value, label]) => `<option value="${value}" ${value === defaultType ? "selected" : ""}>${label}</option>`).join("")}
       </select>
     </label>
+    <label>Phone or WhatsApp number
+      <input name="contact_phone" placeholder="+49…" inputmode="tel" />
+    </label>
+    <label>Location
+      <input name="location" placeholder="City, district, or address" value="${escapeHtml(state.user?.location || "")}" />
+    </label>
+    <label>Short request
+      <input name="request_summary" maxlength="140" placeholder="e.g. Need a callback tonight" required />
+    </label>
     <label>Details
-      <textarea name="description" rows="4" placeholder="Share enough context for a Karibu responder."></textarea>
+      <textarea name="description" rows="4" placeholder="Share enough context for a Karibu responder." required></textarea>
     </label>
     <label>Preferred contact
       <select name="contact_pref">
@@ -2255,7 +2328,14 @@ app.addEventListener("submit", async (e) => {
   if (e.target.id === "support-case-form") {
     const fd = new FormData(e.target);
     try {
-      const res = await api.support.createCase(fd.get("case_type"), fd.get("description"), fd.get("contact_pref"));
+      const res = await api.support.createCase({
+        case_type: fd.get("case_type"),
+        description: fd.get("description"),
+        contact_pref: fd.get("contact_pref"),
+        contact_phone: fd.get("contact_phone"),
+        location: fd.get("location"),
+        request_summary: fd.get("request_summary"),
+      });
       openSheet("Case opened ✓", `<p class="sheet-copy">Your support case has been opened. A Karibu responder will follow up through your preferred route.</p><div class="case-number">${res.case_ref}</div>`, "Done");
     } catch (err) {
       showToast(err.message || "Could not open support case");
@@ -2265,14 +2345,38 @@ app.addEventListener("submit", async (e) => {
 
   if (e.target.id === "admin-invite-form") {
     const fd = new FormData(e.target);
+    const permissions = JSON.stringify({
+      listings: fd.has("perm_listings"),
+      community: fd.has("perm_community"),
+      support: fd.has("perm_support"),
+    });
     try {
-      await api.admin.inviteModerator(fd.get("email"), fd.get("permissions") || "{}");
+      await api.admin.inviteModerator(fd.get("email"), permissions);
       e.target.reset();
       showToast(state.admin.me?.role === "admin" ? "Moderator invited" : "Moderator invite submitted for admin approval");
       loadAdminData();
     } catch (err) {
       showToast(err.message || "Could not invite moderator");
     }
+    return;
+  }
+
+  if (e.target.matches("[data-admin-case-form]")) {
+    const fd = new FormData(e.target);
+    const id = parseInt(e.target.dataset.adminCaseForm, 10);
+    const status = e.submitter?.value || "assigned";
+    await updateAdminCase(id, status, fd.get("message_body") || null);
+    return;
+  }
+
+  if (e.target.matches("[data-admin-announcement-form]")) {
+    const fd = new FormData(e.target);
+    const id = parseInt(e.target.dataset.adminAnnouncementForm, 10);
+    await updateAdminAnnouncement(id, {
+      title: fd.get("title"),
+      body: fd.get("body"),
+      status: fd.get("status"),
+    });
     return;
   }
 
