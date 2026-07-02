@@ -12,6 +12,8 @@ class User(Base):
     full_name = Column(String, nullable=False)
     location = Column(String, default="Berlin, Germany")
     arrived_at = Column(String, nullable=True)
+    profile_photo_url = Column(Text, nullable=True)
+    profile_photo_path = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -155,6 +157,29 @@ class ChecklistCompletion(Base):
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     task_key = Column(String, primary_key=True)
     completed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    community_replies = Column(Boolean, default=True, nullable=False)
+    host_messages = Column(Boolean, default=True, nullable=False)
+    event_reminders = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VerificationRequest(Base):
+    __tablename__ = "verification_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    request_type = Column(String, default="community", nullable=False)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="pending", nullable=False)
+    reviewer_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 class SupportCase(Base):

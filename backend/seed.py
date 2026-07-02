@@ -1,9 +1,7 @@
-"""Seed product reference data, with optional local demo data for development."""
+"""Seed product reference data."""
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 from . import models
-from .auth import hash_password
-from .config import settings
 from .database import SessionLocal, engine
 
 
@@ -95,92 +93,23 @@ EMERGENCY_SERVICES = [
 
 def ensure_schema_compatibility() -> None:
     inspector = inspect(engine)
-    if "listings" not in inspector.get_table_names():
+    table_names = inspector.get_table_names()
+    if "listings" not in table_names:
         return
-    columns = {c["name"] for c in inspector.get_columns("listings")}
+    listing_columns = {c["name"] for c in inspector.get_columns("listings")}
+    user_columns = {c["name"] for c in inspector.get_columns("users")} if "users" in table_names else set()
     statements = []
-    dialect = engine.dialect.name
-    if "state_id" not in columns:
+    if "state_id" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN state_id INTEGER")
-    if "city_id" not in columns:
+    if "city_id" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN city_id INTEGER")
+    if "profile_photo_url" not in user_columns:
+        statements.append("ALTER TABLE users ADD COLUMN profile_photo_url TEXT")
+    if "profile_photo_path" not in user_columns:
+        statements.append("ALTER TABLE users ADD COLUMN profile_photo_path TEXT")
     with engine.begin() as conn:
         for statement in statements:
-            if dialect == "postgresql":
-                statement = statement.replace(" INTEGER", " INTEGER")
             conn.execute(text(statement))
-
-
-def seed_listings(db: Session) -> None:
-    if db.query(models.Listing).count() > 0:
-        backfill_listing_cities(db)
-        return
-    berlin = get_city(db, "Berlin", "BE")
-    db.add_all([
-        models.Listing(
-            title="Cozy Room in Neukölln",
-            price=550,
-            district="Neukölln",
-            address="Karl-Marx-Straße, Neukölln",
-            transit_info="5 min to U8 Boddinstraße",
-            description="Bright and cozy room in a friendly apartment. Perfect for students and young professionals arriving in Berlin. Anmeldung-friendly host.",
-            theme="sun",
-            rating="4.8 ★",
-            is_top_match=True,
-            state_id=berlin.state_id if berlin else None,
-            city_id=berlin.id if berlin else None,
-        ),
-        models.Listing(
-            title="Bright Room in Wedding",
-            price=650,
-            district="Wedding",
-            address="Müllerstraße, Wedding",
-            transit_info="7 min to U6 Wedding",
-            description="Spacious room in a quiet, multicultural neighbourhood. Close to supermarkets, parks, and excellent transport links.",
-            theme="leaf",
-            rating="4.6 ★",
-            state_id=berlin.state_id if berlin else None,
-            city_id=berlin.id if berlin else None,
-        ),
-        models.Listing(
-            title="Shared Flat in Mitte",
-            price=600,
-            district="Mitte",
-            address="Near Alexanderplatz, Mitte",
-            transit_info="Near Alexanderplatz",
-            description="Modern shared flat in the heart of Berlin. Walk to major landmarks, great connections to all U-Bahn and S-Bahn lines.",
-            theme="city",
-            rating="4.7 ★",
-            state_id=berlin.state_id if berlin else None,
-            city_id=berlin.id if berlin else None,
-        ),
-        models.Listing(
-            title="Studio in Prenzlauer Berg",
-            price=780,
-            district="Prenzlauer Berg",
-            address="Schönhauser Allee",
-            transit_info="5 min to U2 Eberswalder Straße",
-            description="Self-contained studio in one of Berlin's most vibrant neighbourhoods. Perfect for working professionals.",
-            theme="leaf",
-            rating="4.9 ★",
-            is_top_match=True,
-            state_id=berlin.state_id if berlin else None,
-            city_id=berlin.id if berlin else None,
-        ),
-        models.Listing(
-            title="Room near TU Berlin",
-            price=620,
-            district="Charlottenburg",
-            address="Hardenbergstraße, Charlottenburg",
-            transit_info="10 min walk to TU Berlin",
-            description="Ideal for TU Berlin students. Quiet room with a dedicated study desk, great Wi-Fi, and a supportive flatmate community.",
-            theme="city",
-            rating="4.7 ★",
-            state_id=berlin.state_id if berlin else None,
-            city_id=berlin.id if berlin else None,
-        ),
-    ])
-    db.commit()
 
 
 def get_state(db: Session, abbreviation: str) -> models.State | None:
@@ -302,81 +231,6 @@ def backfill_listing_cities(db: Session) -> None:
         db.commit()
 
 
-def seed_events(db: Session) -> None:
-    if db.query(models.Event).count() > 0:
-        return
-    db.add_all([
-        models.Event(title="Kenyan Professionals Meetup", date_str="Sat 14 Jun · 6:00 PM", location="Neukölln Community Center", rsvp_count=34, tag="Networking"),
-        models.Event(title="Anmeldung Help Session", date_str="Sun 15 Jun · 3:00 PM", location="Wedding Public Library", rsvp_count=12, tag="Admin help"),
-        models.Event(title="Welcome Newcomers Coffee", date_str="Wed 18 Jun · 10:00 AM", location="Friedrichshain Café", rsvp_count=8, tag="Social"),
-    ])
-    db.commit()
-
-
-def seed_demo_user(db: Session) -> models.User:
-    user = db.query(models.User).filter(models.User.email == "james@example.com").first()
-    if user:
-        return user
-    user = models.User(
-        email="james@example.com",
-        password_hash=hash_password("password123"),
-        full_name="James Mwangi",
-        location="Neukölln, Berlin",
-        is_verified=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-def seed_community(db: Session, user_id: int) -> None:
-    if db.query(models.CommunityPost).count() > 0:
-        return
-    db.add_all([
-        models.CommunityPost(user_id=user_id, author_name="Mercy W.", author_area="Neukölln", body="Best affordable supermarkets in Berlin?", tab="Questions", likes=24, comments=18),
-        models.CommunityPost(user_id=user_id, author_name="Brian O.", author_area="Wedding", body="Looking for someone heading to Anmeldung this week — let's go together!", tab="For You", likes=15, comments=12),
-        models.CommunityPost(user_id=user_id, author_name="Grace M.", author_area="Kreuzberg", body="My 5 tips for getting Anmeldung done fast 🎉", tab="Tips", likes=42, comments=31),
-        models.CommunityPost(user_id=user_id, author_name="Mary K.", author_area="Mitte", body="What is the best SIM card for new arrivals in Berlin?", tab="Questions", likes=18, comments=14),
-        models.CommunityPost(user_id=user_id, author_name="James M.", author_area="Neukölln", body="Do I need a German bank account before Anmeldung?", tab="Questions", likes=22, comments=17),
-        models.CommunityPost(user_id=user_id, author_name="John K.", author_area="Neukölln", body="Always book your Bürgeramt at 8am — slots go within minutes!", tab="Tips", likes=44, comments=18),
-        models.CommunityPost(user_id=user_id, author_name="Alice N.", author_area="Mitte", body="Get the BVG monthly pass. ~€86 and covers all public transport in Berlin.", tab="Tips", likes=38, comments=12),
-    ])
-    db.commit()
-
-
-def seed_demo_saved_listing(db: Session, user_id: int) -> None:
-    listing = db.query(models.Listing).filter(models.Listing.title == "Cozy Room in Neukölln").first()
-    if not listing:
-        return
-    existing = db.query(models.SavedListing).filter(
-        models.SavedListing.user_id == user_id,
-        models.SavedListing.listing_id == listing.id,
-    ).first()
-    if not existing:
-        db.add(models.SavedListing(user_id=user_id, listing_id=listing.id))
-        db.commit()
-
-
-def seed_demo_booking(db: Session, user_id: int) -> None:
-    if db.query(models.Booking).filter(models.Booking.user_id == user_id).count() > 0:
-        return
-    listing = db.query(models.Listing).filter(models.Listing.title == "Cozy Room in Neukölln").first()
-    if not listing:
-        return
-    db.add(models.Booking(
-        user_id=user_id,
-        listing_id=listing.id,
-        listing_title=listing.title,
-        listing_theme=listing.theme,
-        start_date="1 Jun 2024",
-        end_date="30 Jun 2024",
-        price=listing.price,
-        status="confirmed",
-    ))
-    db.commit()
-
-
 def run_seed() -> None:
     ensure_schema_compatibility()
     db = SessionLocal()
@@ -384,15 +238,6 @@ def run_seed() -> None:
         seed_geography(db)
         seed_emergency_services(db)
         seed_rathaus_offices(db)
-        if settings.seed_demo_data:
-            seed_listings(db)
-            seed_events(db)
-            user = seed_demo_user(db)
-            seed_community(db, user.id)
-            seed_demo_saved_listing(db, user.id)
-            seed_demo_booking(db, user.id)
-            print("✓ Karibu Ujerumani reference and demo data seeded")
-        else:
-            print("✓ Karibu Ujerumani reference data seeded")
+        print("✓ Karibu Ujerumani reference data seeded")
     finally:
         db.close()

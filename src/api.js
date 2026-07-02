@@ -43,6 +43,12 @@ export const api = {
     login: (d) => request("/auth/login", { method: "POST", body: d }),
     me: () => request("/auth/me"),
     updateMe: (d) => request("/auth/me", { method: "PATCH", body: d }),
+    updateProfilePhoto: (d) => request("/auth/me/profile-photo", { method: "PATCH", body: d }),
+    settings: () => request("/auth/me/settings"),
+    updateSettings: (d) => request("/auth/me/settings", { method: "PUT", body: d }),
+    verification: () => request("/auth/me/verification"),
+    createVerification: (d) => request("/auth/me/verification", { method: "POST", body: d }),
+    summary: () => request("/auth/me/summary"),
   },
   listings: {
     list: (params = {}) => {

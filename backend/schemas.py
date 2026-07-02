@@ -21,6 +21,9 @@ class UserOut(BaseModel):
     location: str
     is_verified: bool
     arrived_at: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    profile_photo_path: Optional[str] = None
+    verification_status: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -29,6 +32,52 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     location: Optional[str] = None
     arrived_at: Optional[str] = None
+
+
+class ProfilePhotoUpdate(BaseModel):
+    profile_photo_url: str
+    profile_photo_path: Optional[str] = None
+
+
+class UserSettingsOut(BaseModel):
+    community_replies: bool = True
+    host_messages: bool = True
+    event_reminders: bool = False
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class UserSettingsUpdate(BaseModel):
+    community_replies: bool = True
+    host_messages: bool = True
+    event_reminders: bool = False
+
+
+class VerificationRequestCreate(BaseModel):
+    request_type: str = "community"
+    notes: Optional[str] = None
+
+
+class VerificationRequestOut(BaseModel):
+    id: int
+    request_type: str
+    notes: Optional[str] = None
+    status: str
+    reviewer_notes: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProfileSummaryOut(BaseModel):
+    saved_count: int = 0
+    booking_count: int = 0
+    checklist_done_count: int = 0
+    post_count: int = 0
+    tips_count: int = 0
+    answers_count: int = 0
+    support_case_count: int = 0
 
 
 class Token(BaseModel):

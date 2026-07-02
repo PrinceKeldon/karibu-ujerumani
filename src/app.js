@@ -32,6 +32,9 @@ let state = {
   bookings: [],
   conversations: [],
   checklistDone: new Set(),
+  profileSummary: null,
+  profileSettings: null,
+  verificationRequests: [],
   detailListing: null,
   states: [],
   cities: [],
@@ -50,6 +53,7 @@ let state = {
   rathausLoading: false,
   rathausSearchLabel: "",
   messagesLoaded: false,
+  profileLoaded: false,
   emergencyType: "All",
   listRoomAmenities: [],
   searchQuery: "",
@@ -59,6 +63,7 @@ let state = {
   toast: "",
   loading: false,
   listRoomLoading: false,
+  profilePhotoLoading: false,
   authError: null,
   authForm: { email: "", password: "", name: "" },
 };
@@ -136,11 +141,16 @@ function setScreen(screen, opts = {}) {
   history.replaceState(null, "", `#${screen}`);
   render();
   // Kick off data loading for screens that need it
+  if (screen === screens.home) {
+    if (!state.communityPosts.length) loadCommunity("For You");
+    if (!state.events.length) loadEvents();
+  }
   if (screen === screens.search) loadListings();
   if (screen === screens.community) loadCommunity(state.communityTab);
   if (screen === screens.checklist) loadChecklist();
   if (screen === screens.messages) loadMessages();
   if (screen === screens.bookings) loadBookings();
+  if (screen === screens.profile) loadProfileData();
   if (screen === screens.rathaus) loadRathaus();
   if (screen === screens.emergency) loadEmergency();
 }
@@ -254,8 +264,7 @@ async function loadEmergency() {
 async function loadCommunity(tab) {
   try {
     if (tab === "Events") {
-      const data = await api.community.events();
-      state.events = data;
+      await loadEvents(false);
     } else {
       const data = await api.community.posts(tab);
       state.communityPosts = data;
@@ -263,6 +272,15 @@ async function loadCommunity(tab) {
     render();
   } catch (e) {
     showToast("Could not load community");
+  }
+}
+
+async function loadEvents(shouldRender = true) {
+  try {
+    state.events = await api.community.events();
+    if (shouldRender) render();
+  } catch {
+    if (shouldRender) showToast("Could not load events");
   }
 }
 
@@ -294,6 +312,25 @@ async function loadBookings() {
     render();
   } catch (e) {
     showToast("Could not load bookings");
+  }
+}
+
+async function loadProfileData() {
+  try {
+    const [summary, settings, verification] = await Promise.all([
+      api.auth.summary(),
+      api.auth.settings(),
+      api.auth.verification(),
+    ]);
+    state.profileSummary = summary;
+    state.profileSettings = settings;
+    state.verificationRequests = verification;
+    state.profileLoaded = true;
+    render();
+  } catch {
+    state.profileLoaded = true;
+    render();
+    showToast("Could not load profile details");
   }
 }
 
@@ -657,10 +694,8 @@ function home() {
   const topListings = state.listings.slice(0, 3);
   const cityName = state.selectedCity?.name || "Berlin";
   const tierCities = state.cities.filter((c) => c.is_tier_1 || c.is_tier_2).slice(0, 8);
-  const announcements = [
-    { icon: "📢", title: "Kenyan Business Directory", sub: "New listings added this week", tag: "New" },
-    { icon: "🤝", title: "Weekend Networking Event", sub: "Sat 14 Jun · Neukölln", tag: "Sat" },
-  ];
+  const communityHighlights = state.communityPosts.slice(0, 2);
+  const upcomingEvents = state.events.slice(0, 2);
   const cards = [
     ["🏠", "Find Housing", "Rooms, apartments & short stays", screens.search],
     ["👥", "Community", "Ask, share, connect & help others", screens.community],
@@ -688,12 +723,15 @@ function home() {
       : `<div class="mini-row skeleton-row"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>`}
     <div class="section-row" style="margin-top:22px"><h2>Explore Germany</h2><button data-action="city-selector">All cities</button></div>
     <div class="city-strip">${tierCities.map((c) => `<button class="${state.selectedCity?.id === c.id ? "active" : ""}" data-city-id="${c.id}"><b>${c.name}</b><span>${c.state_abbreviation} · ${c.listing_count} listing${c.listing_count === 1 ? "" : "s"}</span></button>`).join("")}</div>
-    <div class="section-row" style="margin-top:22px"><h2>Announcements</h2><button data-action="see-all-announcements">View all</button></div>
-    <div class="announce-cards">${announcements.map((a) => `<button class="announce-card" data-action="open-announcement"><span class="announce-icon">${a.icon}</span><div><strong>${a.title}</strong><p>${a.sub}</p></div><b class="announce-tag">${a.tag}</b></button>`).join("")}</div>
-    <div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">Join</button></div>
+    <div class="section-row" style="margin-top:22px"><h2>Events</h2><button data-community-tab="Events" data-screen="${screens.community}">View all</button></div>
+    <div class="announce-cards">${upcomingEvents.length
+      ? upcomingEvents.map((e) => `<button class="announce-card" data-community-tab="Events" data-screen="${screens.community}"><span class="announce-icon">📅</span><div><strong>${escapeHtml(e.title)}</strong><p>${escapeHtml(e.date_str)} · ${escapeHtml(e.location)}</p></div><b class="announce-tag">${escapeHtml(e.tag)}</b></button>`).join("")
+      : `<button class="announce-card" data-community-tab="Events" data-screen="${screens.community}"><span class="announce-icon">📅</span><div><strong>No events yet</strong><p>Community events will appear here when posted.</p></div><b class="announce-tag">Events</b></button>`}</div>
+    <div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">${communityHighlights.length ? "Join" : "Start"}</button></div>
     <div class="community-preview">
-      <button class="community-highlight" data-screen="${screens.community}"><b>Mercy W. · Neukölln</b><span>Best affordable supermarkets in Berlin?</span><footer>💬 18 replies · 3h ago</footer></button>
-      <button class="community-highlight" data-screen="${screens.community}"><b>Grace M. · Wedding</b><span>New here? Ask. Been here a while? Share what you know.</span><footer>💬 24 replies · 1d ago</footer></button>
+      ${communityHighlights.length
+        ? communityHighlights.map((p) => `<button class="community-highlight" data-screen="${screens.community}"><b>${escapeHtml(p.author_name)} · ${escapeHtml(p.author_area || "Germany")}</b><span>${escapeHtml(p.body)}</span><footer>💬 ${p.comments || 0} replies · ${timeAgo(p.created_at)}</footer></button>`).join("")
+        : `<button class="community-highlight empty" data-screen="${screens.community}"><b>Community is ready</b><span>Be the first to ask a question, share an event, or welcome someone near you.</span><footer>No posts yet</footer></button>`}
     </div>
     </div>
     ${demoLayer()}
@@ -1033,41 +1071,61 @@ function bookings() {
 }
 
 function profile() {
+  if (!state.profileLoaded) {
+    return shell(
+      "Profile",
+      `<div class="loading-state">${icons.spinner} Loading profile…</div>`
+    );
+  }
   const u = state.user || {};
-  const firstName = u.full_name?.split(" ")[0] || "";
   const initials = u.full_name?.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
+  const summary = state.profileSummary || {
+    saved_count: state.savedIds.size,
+    booking_count: state.bookings.length,
+    checklist_done_count: state.checklistDone.size,
+    post_count: 0,
+    tips_count: 0,
+    answers_count: 0,
+    support_case_count: 0,
+  };
+  const latestVerification = state.verificationRequests[0];
+  const verificationLabel = u.is_verified
+    ? "✓ Verified"
+    : latestVerification?.status === "pending" ? "Verification pending" : "Unverified";
+  const activityRows = [
+    summary.saved_count ? `<div class="activity-row"><span class="activity-icon">❤️</span><div><b>Saved ${summary.saved_count} listing${summary.saved_count !== 1 ? "s" : ""}</b><p>From your housing searches</p></div></div>` : "",
+    summary.booking_count ? `<div class="activity-row"><span class="activity-icon">🏠</span><div><b>${summary.booking_count} booking request${summary.booking_count !== 1 ? "s" : ""}</b><p>Tracked in My Bookings</p></div></div>` : "",
+    summary.checklist_done_count ? `<div class="activity-row"><span class="activity-icon">✅</span><div><b>${summary.checklist_done_count} checklist task${summary.checklist_done_count !== 1 ? "s" : ""} completed</b><p>Saved to your account</p></div></div>` : "",
+    latestVerification ? `<div class="activity-row"><span class="activity-icon">✓</span><div><b>Verification ${latestVerification.status}</b><p>${new Date(latestVerification.created_at).toLocaleDateString()}</p></div></div>` : "",
+  ].filter(Boolean);
   return shell(
     "",
     `<header class="profile-hero">
-      <button class="profile-photo" data-action="profile-photo">${initials}</button>
+      <button class="profile-photo" data-profile="Profile Photo">${u.profile_photo_url ? `<img src="${u.profile_photo_url}" alt="${escapeHtml(u.full_name || "Profile photo")}" />` : initials}</button>
       <h1>${u.full_name || "—"}</h1>
       <p>${u.location || "Berlin, Germany"}</p>
-      <span>${u.is_verified ? "✓ Verified" : "Unverified"}</span>
+      <span>${verificationLabel}</span>
     </header>
     <div class="stats">
-      <button data-action="saved-listings">${state.savedIds.size}<span>Saved</span></button>
-      <button data-screen="${screens.bookings}">${state.bookings.length}<span>Bookings</span></button>
-      <button data-action="reviews">0<span>Reviews</span></button>
+      <button data-action="saved-listings">${summary.saved_count}<span>Saved</span></button>
+      <button data-screen="${screens.bookings}">${summary.booking_count}<span>Bookings</span></button>
+      <button data-screen="${screens.community}">${summary.post_count}<span>Posts</span></button>
     </div>
-    <div class="menu-list">${["Edit Profile", "Verification", "Payment Methods", "Saved Searches", "Settings", "Help & Support"].map((item) => `<button data-profile="${item}"><span>${profileItemIcon(item)}</span>${item}<b>›</b></button>`).join("")}</div>
+    <div class="menu-list">${["Edit Profile", "Profile Photo", "Verification", "Payment Methods", "Saved Searches", "Settings", "Help & Support"].map((item) => `<button data-profile="${item}"><span>${profileItemIcon(item)}</span>${item}<b>›</b></button>`).join("")}</div>
     <h2 class="section-title profile-section-title">Recent Activity</h2>
-    <div class="activity-list">
-      <div class="activity-row"><span class="activity-icon">💬</span><div><b>Answered a community question</b><p>2 days ago</p></div></div>
-      <div class="activity-row"><span class="activity-icon">❤️</span><div><b>Saved ${state.savedIds.size} listing${state.savedIds.size !== 1 ? "s" : ""}</b><p>This week</p></div></div>
-      <div class="activity-row"><span class="activity-icon">✅</span><div><b>${state.checklistDone.size} checklist tasks completed</b><p>Since joining</p></div></div>
-    </div>
+    <div class="activity-list">${activityRows.length ? activityRows.join("") : `<div class="empty-state"><p>No account activity yet.</p><button class="primary" data-screen="${screens.community}">Visit community</button></div>`}</div>
     <h2 class="section-title profile-section-title">Contributions</h2>
     <div class="contrib-grid">
-      <div class="contrib-card"><b>5</b><span>Tips shared</span></div>
-      <div class="contrib-card"><b>12</b><span>Answers given</span></div>
-      <div class="contrib-card"><b>34</b><span>Helpful votes</span></div>
+      <div class="contrib-card"><b>${summary.tips_count}</b><span>Tips shared</span></div>
+      <div class="contrib-card"><b>${summary.answers_count}</b><span>Question posts</span></div>
+      <div class="contrib-card"><b>${summary.support_case_count}</b><span>Support cases</span></div>
     </div>
     <button class="logout-btn" data-action="logout">Sign out</button>`
   );
 }
 
 function profileItemIcon(item) {
-  return { "Edit Profile": "♙", Verification: "✓", "Payment Methods": "▣", "Saved Searches": "⌕", Settings: "⚙", "Help & Support": "☼" }[item];
+  return { "Edit Profile": "♙", "Profile Photo": "◉", Verification: "✓", "Payment Methods": "▣", "Saved Searches": "⌕", Settings: "⚙", "Help & Support": "☼" }[item];
 }
 
 function rathausCards(offices) {
@@ -1284,6 +1342,11 @@ app.addEventListener("click", (e) => {
   if (listingBtn && !saveBtn) { handleOpenListing(parseInt(listingBtn.dataset.listingId)); return; }
   if (taskBtn) { handleTask(taskBtn.dataset.task); return; }
   if (chatBtn) { handleChat(chatBtn.dataset.chat); return; }
+  if (communityTabBtn && screenBtn) {
+    state.communityTab = communityTabBtn.dataset.communityTab;
+    setScreen(screenBtn.dataset.screen);
+    return;
+  }
   if (communityTabBtn) { state.communityTab = communityTabBtn.dataset.communityTab; render(); loadCommunity(state.communityTab); return; }
   if (bookingsTabBtn) { state.bookingsTab = bookingsTabBtn.dataset.bookingsTab; render(); return; }
   if (emergencyTypeBtn) { state.emergencyType = emergencyTypeBtn.dataset.emergencyType; render(); return; }
@@ -1516,18 +1579,10 @@ function handleAction(action) {
     render();
     return;
   }
-  if (action === "edit-listing") { openSheet("Edit listing", `<p class="sheet-copy">Listing editing coming soon — contact Karibu Support to update your listing details.</p>`, "Got it"); return; }
+  if (action === "edit-listing") { openSheet("Edit listing", `<p class="sheet-copy">Listing edits are handled by Karibu Support in MVP0.1 so verified listings stay consistent.</p><button class="primary" data-profile="Help & Support">Contact support</button>`, "Close"); return; }
   if (action === "message-host" || action === "contact-host") { openHostMessageSheet(); return; }
   if (action === "support-message") {
     openSheet("Help & Support", supportCaseForm(), "Close");
-    return;
-  }
-  if (action === "start-verification") {
-    openSheet("Verification", `<p class="sheet-copy">Your verification request has been queued. A Karibu reviewer will contact you through Messages.</p>`, "Done");
-    return;
-  }
-  if (action === "save-settings") {
-    showToast("Settings saved");
     return;
   }
   if (action === "toggle-checklist") { state.checklistExpanded = !state.checklistExpanded; render(); return; }
@@ -1539,12 +1594,16 @@ function handleAction(action) {
     state.checklistDone = new Set();
     state.bookings = [];
     state.conversations = [];
+    state.profileSummary = null;
+    state.profileSettings = null;
+    state.verificationRequests = [];
+    state.profileLoaded = false;
     setScreen(screens.login);
     return;
   }
 
   const sheets = {
-    notifications: ["Notifications", "Mary replied about the room. Your Rathaus checklist has a suggested appointment slot."],
+    notifications: ["Notifications", "No notifications yet."],
     "filter-budget": ["Budget filter", "Filtering: up to €700/month."],
     "filter-type": ["Type filter", "Private room or verified short stay."],
     "filter-more": ["More filters", "Verified hosts, near U-Bahn, Anmeldung friendly, Wi-Fi, and furnished."],
@@ -1557,12 +1616,8 @@ function handleAction(action) {
     "message-more": ["Inbox actions", "Open a support chat from Profile > Help & Support, or contact a host from a listing."],
     "booking-details": ["Booking details", "Full dates, host contact, check-in notes, and payment status."],
     "booking-filter": ["Booking filters", "Filter by status: Upcoming, Confirmed, Pending, Past."],
-    "profile-photo": ["Profile photo", "Upload a profile photo and manage verification badge."],
     "saved-listings": ["Saved listings", `You have ${state.savedIds.size} saved listing(s).`],
-    reviews: ["Reviews", "Community trust score, host reviews, and guest feedback."],
     "service-chip": ["Service selected", "This office handles this registration service."],
-    "open-announcement": ["Community Announcements", "New Kenyan Business Directory is live! Browse vetted businesses run by Kenyans in Berlin. Weekend Networking Event: Sat 14 Jun, Neukölln Community Center, 6 PM."],
-    "see-all-announcements": ["All Announcements", "Kenyan Business Directory launch, Weekend Networking (Sat 14 Jun), Anmeldung Help Session (Sun 15 Jun), mentor matching feature launching soon."],
   };
 
   const s = sheets[action];
@@ -1585,22 +1640,53 @@ function profileSheet(item) {
       <button class="primary" type="submit">Save profile</button>
     </form>`;
   }
+  if (item === "Profile Photo") {
+    return `<form class="sheet-form" id="profile-photo-form">
+      <label>Profile photo
+        <input name="profile_photo" type="file" accept="image/png,image/jpeg,image/webp,image/gif" required />
+      </label>
+      <p class="route-note">MVP0.1 stores your photo on your profile record and prepares the path for the Supabase profile-photos bucket.</p>
+      <button class="primary" type="submit">${state.profilePhotoLoading ? icons.spinner + " Saving…" : "Save photo"}</button>
+    </form>`;
+  }
   if (item === "Verification") {
-    return `<p class="sheet-copy">Request community verification so hosts and members can trust your profile.</p><button class="primary" data-action="start-verification">Request verification</button>`;
+    const latest = state.verificationRequests[0];
+    if (state.user?.is_verified) {
+      return `<p class="sheet-copy">Your profile is verified.</p>`;
+    }
+    if (latest?.status === "pending") {
+      return `<p class="sheet-copy">Your verification request is pending review. A Karibu reviewer will follow up through Messages if more information is needed.</p>`;
+    }
+    return `<form class="sheet-form" id="verification-form">
+      <label>Verification type
+        <select name="request_type">
+          <option value="community">Community verification</option>
+          <option value="host">Host verification</option>
+          <option value="leader">Community leader verification</option>
+        </select>
+      </label>
+      <label>Notes
+        <textarea name="notes" rows="4" placeholder="Share your city, community connection, or reason for verification."></textarea>
+      </label>
+      <button class="primary" type="submit">Submit verification request</button>
+    </form>`;
   }
   if (item === "Payment Methods") {
     return `<p class="sheet-copy">No payment method is required for MVP0.1. Keep deposits and rent outside Karibu until payments are formally launched.</p>`;
   }
   if (item === "Saved Searches") {
-    return `<p class="sheet-copy">Current saved search:</p><div class="demo-reply">${state.selectedCity?.name || "Germany"} · ${state.searchQuery || "Any area"} · Rooms and short stays</div><button class="primary" data-screen="${screens.search}">Open housing search</button>`;
+    return state.searchQuery
+      ? `<p class="sheet-copy">Current search:</p><div class="case-number">${escapeHtml(state.selectedCity?.name || "Germany")} · ${escapeHtml(state.searchQuery)} · Rooms and short stays</div><button class="primary" data-screen="${screens.search}">Open housing search</button>`
+      : `<p class="sheet-copy">No saved searches yet. Search housing first, then return here to reuse it.</p><button class="primary" data-screen="${screens.search}">Open housing search</button>`;
   }
   if (item === "Settings") {
-    return `<div class="settings-list">
-      <label><input type="checkbox" checked /> Community replies</label>
-      <label><input type="checkbox" checked /> Host messages</label>
-      <label><input type="checkbox" /> Event reminders</label>
-      <button class="primary" data-action="save-settings">Save settings</button>
-    </div>`;
+    const settings = state.profileSettings || { community_replies: true, host_messages: true, event_reminders: false };
+    return `<form class="settings-list" id="settings-form">
+      <label><input name="community_replies" type="checkbox" ${settings.community_replies ? "checked" : ""} /> Community replies</label>
+      <label><input name="host_messages" type="checkbox" ${settings.host_messages ? "checked" : ""} /> Host messages</label>
+      <label><input name="event_reminders" type="checkbox" ${settings.event_reminders ? "checked" : ""} /> Event reminders</label>
+      <button class="primary" type="submit">Save settings</button>
+    </form>`;
   }
   if (item === "Help & Support") return supportCaseForm();
   return `<p class="sheet-copy"></p>`;
@@ -1670,6 +1756,67 @@ app.addEventListener("submit", async (e) => {
       showToast("Profile saved");
     } catch (err) {
       showToast(err.message || "Could not save profile");
+    }
+    return;
+  }
+
+  if (e.target.id === "profile-photo-form") {
+    const file = e.target.elements.profile_photo?.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("Profile photo must be under 5 MB");
+      return;
+    }
+    state.profilePhotoLoading = true;
+    try {
+      const profilePhotoUrl = await readFileAsDataUrl(file);
+      const safeName = file.name.toLowerCase().replace(/[^a-z0-9.]+/g, "-");
+      state.user = await api.auth.updateProfilePhoto({
+        profile_photo_url: profilePhotoUrl,
+        profile_photo_path: `profile-photos/${state.user.id}/${Date.now()}-${safeName}`,
+      });
+      state.profilePhotoLoading = false;
+      state.sheet = null;
+      render();
+      showToast("Profile photo saved");
+    } catch (err) {
+      state.profilePhotoLoading = false;
+      showToast(err.message || "Could not save photo");
+    }
+    return;
+  }
+
+  if (e.target.id === "verification-form") {
+    const fd = new FormData(e.target);
+    try {
+      const req = await api.auth.createVerification({
+        request_type: fd.get("request_type"),
+        notes: fd.get("notes"),
+      });
+      state.verificationRequests = [req, ...state.verificationRequests.filter((r) => r.id !== req.id)];
+      state.user = { ...state.user, verification_status: req.status };
+      state.sheet = null;
+      render();
+      showToast("Verification request submitted");
+    } catch (err) {
+      showToast(err.message || "Could not submit verification");
+    }
+    return;
+  }
+
+  if (e.target.id === "settings-form") {
+    const fd = new FormData(e.target);
+    try {
+      state.profileSettings = await api.auth.updateSettings({
+        community_replies: fd.has("community_replies"),
+        host_messages: fd.has("host_messages"),
+        event_reminders: fd.has("event_reminders"),
+      });
+      state.sheet = null;
+      render();
+      showToast("Settings saved");
+    } catch (err) {
+      showToast(err.message || "Could not save settings");
     }
     return;
   }
