@@ -269,7 +269,7 @@ async function initAuth() {
     const user = await api.auth.me();
     state.user = user;
     state.messages = [
-      { from: "bot", text: `Hi ${user.full_name.split(" ")[0]}! 👋\nHow can I help you settle in Germany?` },
+      { from: "bot", text: `Hi ${user.full_name.split(" ")[0]}! 👋\nHow can I help with life in Germany today?` },
     ];
     setScreen(screens.home);
     await loadGeography();
@@ -290,7 +290,7 @@ async function doLogin(email, password) {
     state.user = data.user;
     state.loading = false;
     state.messages = [
-      { from: "bot", text: `Hi ${data.user.full_name.split(" ")[0]}! 👋\nHow can I help you settle in Germany?` },
+      { from: "bot", text: `Hi ${data.user.full_name.split(" ")[0]}! 👋\nHow can I help with life in Germany today?` },
     ];
     setScreen(screens.home);
     await loadGeography();
@@ -312,7 +312,7 @@ async function doRegister(email, password, fullName) {
     state.user = data.user;
     state.loading = false;
     state.messages = [
-      { from: "bot", text: `Welcome to Karibu Ujerumani, ${data.user.full_name.split(" ")[0]}! 🎉\nI'm here to help you settle in Germany.` },
+      { from: "bot", text: `Welcome to Karibu Ujerumani, ${data.user.full_name.split(" ")[0]}! 🎉\nI'm here for community, services, housing, and everyday life in Germany.` },
     ];
     setScreen(screens.home);
     await loadGeography();
@@ -546,7 +546,7 @@ function splash() {
       <div class="brand-house"><span></span><span></span><span></span></div>
       <h1>KARIBU</h1>
       <h2>UJERUMANI</h2>
-      <p>Your trusted community for living, connecting, and thriving in Germany.</p>
+      <p>Kenyan community, events, support, and local knowledge across Germany.</p>
     </div>
     <div class="cityline" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <div class="splash-loader"><span></span></div>
@@ -623,8 +623,8 @@ function home() {
   ];
   const cards = [
     ["🏠", "Find Housing", "Rooms, apartments & short stays", screens.search],
-    ["✅", "Arrival Checklist", "Step-by-step guide for newcomers", screens.checklist],
-    ["👥", "Community", "Ask, share & get local tips", screens.community],
+    ["👥", "Community", "Ask, share, connect & help others", screens.community],
+    ["✅", "Arrival Checklist", "Useful steps for new arrivals", screens.checklist],
     ["🏛️", "Rathaus Finder", "Find the right Bürgeramt nearby", screens.rathaus],
     ["🛟", "Emergency Help", "Community support when it is urgent", screens.emergency],
     ["❤️", "Saved Listings", "Your favorite places", screens.search],
@@ -653,7 +653,7 @@ function home() {
     <div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">Join</button></div>
     <div class="community-preview">
       <button class="community-highlight" data-screen="${screens.community}"><b>Mercy W. · Neukölln</b><span>Best affordable supermarkets in Berlin?</span><footer>💬 18 replies · 3h ago</footer></button>
-      <button class="community-highlight" data-screen="${screens.community}"><b>Grace M. · Wedding</b><span>My 5 tips for getting Anmeldung done fast 🎉</span><footer>💬 24 replies · 1d ago</footer></button>
+      <button class="community-highlight" data-screen="${screens.community}"><b>Grace M. · Wedding</b><span>New here? Ask. Been here a while? Share what you know.</span><footer>💬 24 replies · 1d ago</footer></button>
     </div>
     </div>
     ${demoLayer()}
@@ -844,11 +844,11 @@ function assistant() {
     "Karibu Chat",
     `<div class="chat-intro">
       <div class="chat-mark">💬</div>
-      <div><h2>Your AI concierge</h2><p>Ask about housing, Anmeldung, documents, costs, and settling in Germany.</p></div>
+      <div><h2>Your AI concierge</h2><p>Ask about housing, Anmeldung, documents, costs, events, and life in Germany.</p></div>
     </div>
     <div class="chat" id="chat-messages">${state.messages.map((m) => `<div class="bubble ${m.from}">${m.text.replace(/\n/g, "<br>")}</div>`).join("")}</div>
     <div class="action-chips">${chips.map((c) => `<button data-chat="${c}">${c}</button>`).join("")}</div>
-    <form class="composer" id="chat-form"><input id="chat-input" placeholder="Ask anything about settling in Germany…" /><button type="submit">🎙</button></form>`,
+    <form class="composer" id="chat-form"><input id="chat-input" placeholder="Ask anything about life in Germany…" /><button type="submit">🎙</button></form>`,
     { back: screens.home }
   );
 }

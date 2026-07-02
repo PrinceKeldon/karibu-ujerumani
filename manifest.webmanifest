@@ -1,7 +1,7 @@
 {
   "name": "Karibu Ujerumani",
   "short_name": "Karibu",
-  "description": "For settling in Germany with housing, official services, emergency support, Karibu Chat, and community guidance.",
+  "description": "A community hub for Kenyans in Germany with events, housing leads, official-service guidance, Karibu Chat, and trusted support.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -41,7 +41,7 @@
     {
       "name": "Karibu Chat",
       "short_name": "Chat",
-      "description": "Ask your AI concierge about settling in Germany",
+      "description": "Ask your AI concierge about life in Germany",
       "url": "/#assistant"
     }
   ]
