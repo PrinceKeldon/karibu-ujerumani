@@ -69,7 +69,7 @@ EMERGENCY_SERVICES = [
     ("Fire & Ambulance", "112", "Fire brigade and ambulance. Also the European emergency number.", "national", None, "fire", True, "German, English"),
     ("Telefonseelsorge", "0800 111 0 111", "Free 24/7 mental health crisis line. Anonymous.", "national", None, "mental_health", True, "German"),
     ("Telefonseelsorge Alternative", "0800 111 0 222", "Alternative 24/7 mental health and emotional support line.", "national", None, "mental_health", True, "German"),
-    ("Kenyan Embassy Berlin", "+49 30 259 2660", "Emergency consular assistance for Kenyan nationals.", "national", None, "embassy", False, "English, Swahili, German"),
+    ("Kenyan Embassy Berlin", "+4930 25926611", "Emergency consular assistance for Kenyan nationals.", "national", None, "embassy", False, "English, Swahili, German"),
     ("UNHCR Germany", "+49 30 202 202 0", "Support for asylum seekers and refugees.", "national", None, "immigrant_support", False, "German, English, French"),
     ("Caritas Refugee Advice", "0800 000 4440", "Advice on asylum, immigration, and social support.", "national", None, "immigrant_support", False, "German, Arabic, English"),
     ("Giftnotruf Berlin", "030 19240", "Poison control for Berlin and surrounding eastern states.", "state", "BE", "poison", True, "German"),
@@ -99,6 +99,7 @@ def ensure_schema_compatibility() -> None:
     listing_columns = {c["name"] for c in inspector.get_columns("listings")}
     user_columns = {c["name"] for c in inspector.get_columns("users")} if "users" in table_names else set()
     event_columns = {c["name"] for c in inspector.get_columns("events")} if "events" in table_names else set()
+    emergency_columns = {c["name"] for c in inspector.get_columns("emergency_services")} if "emergency_services" in table_names else set()
     statements = []
     if "state_id" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN state_id INTEGER")
@@ -110,6 +111,10 @@ def ensure_schema_compatibility() -> None:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_path TEXT")
     if "events" in table_names and "user_id" not in event_columns:
         statements.append("ALTER TABLE events ADD COLUMN user_id INTEGER")
+    if "emergency_services" in table_names:
+        for column in ("website", "address", "map_url", "office_hours"):
+            if column not in emergency_columns:
+                statements.append(f"ALTER TABLE emergency_services ADD COLUMN {column} VARCHAR")
     with engine.begin() as conn:
         for statement in statements:
             conn.execute(text(statement))
@@ -153,21 +158,32 @@ def seed_geography(db: Session) -> None:
 
 
 def seed_emergency_services(db: Session) -> None:
-    if db.query(models.EmergencyService).count() > 0:
-        return
-    for name, phone, description, scope, state_abbr, category, available_24h, languages in EMERGENCY_SERVICES:
-        state = get_state(db, state_abbr) if state_abbr else None
-        db.add(models.EmergencyService(
-            name=name,
-            phone=phone,
-            description=description,
-            scope=scope,
-            state_id=state.id if state else None,
-            category=category,
-            available_24h=available_24h,
-            languages=languages,
-        ))
-    db.commit()
+    if db.query(models.EmergencyService).count() == 0:
+        for name, phone, description, scope, state_abbr, category, available_24h, languages in EMERGENCY_SERVICES:
+            state = get_state(db, state_abbr) if state_abbr else None
+            db.add(models.EmergencyService(
+                name=name,
+                phone=phone,
+                description=description,
+                scope=scope,
+                state_id=state.id if state else None,
+                category=category,
+                available_24h=available_24h,
+                languages=languages,
+            ))
+        db.commit()
+    embassy = (
+        db.query(models.EmergencyService)
+        .filter(models.EmergencyService.name == "Kenyan Embassy Berlin")
+        .first()
+    )
+    if embassy:
+        embassy.phone = "+4930 25926611"
+        embassy.website = "https://kenyaembassyberlin.de"
+        embassy.address = "Rheinbabenallee 49, 14199 Berlin, Germany"
+        embassy.map_url = "https://kenyanembassyberlin.de/contact-us/#"
+        embassy.office_hours = "Mon-Fri 09:00-13:00"
+        db.commit()
 
 
 def seed_rathaus_offices(db: Session) -> None:

@@ -592,16 +592,20 @@ const emergencyContacts = [
     type: "Embassy",
     title: "Embassy support",
     org: "Kenyan Embassy, Berlin",
-    availability: "Mon–Fri 09:00–12:30",
+    availability: "Mon-Fri 09:00-13:00",
     tone: "slate",
     detail: "For lost passport, detention, family emergency, travel document, or urgent consular guidance.",
     action_type: "case+call",
     case_type: "embassy",
     action: "Open Karibu case",
     phones: [
-      { label: "Kenyan Embassy Berlin", number: "tel:+4930259266660" },
+      { label: "Kenyan Embassy Berlin", number: "tel:+493025926611" },
     ],
-    url: { label: "kenyanembassyberlin.de ↗", href: "https://kenyanembassyberlin.de/" },
+    url: { label: "kenyaembassyberlin.de ↗", href: "https://kenyaembassyberlin.de" },
+    address: {
+      label: "Rheinbabenallee 49, 14199 Berlin, Germany",
+      href: "https://kenyanembassyberlin.de/contact-us/#",
+    },
   },
   {
     type: "Admin",
@@ -1213,11 +1217,24 @@ function emergencyCardActions(c) {
   if (c.url) {
     parts.push(`<a class="sc-link" href="${c.url.href}" target="_blank" rel="noopener">${c.url.label}</a>`);
   }
+  if (c.address) {
+    parts.push(`<a class="sc-link" href="${c.address.href}" target="_blank" rel="noopener">📍 ${c.address.label}</a>`);
+  }
   if (c.action_type === "case" || c.action_type === "case+call") {
     parts.push(`<button class="primary sc-case-btn" data-case-type="${c.case_type}"${c.contact_pref_prompt ? ' data-ask-pref="true"' : ""}>${c.action}</button>`);
   }
 
   return `<div class="sc-actions">${parts.join("")}</div>`;
+}
+
+function emergencyServiceActions(c) {
+  const phone = c.phone ? `<a class="sc-call" href="tel:${c.phone.replace(/\s+/g, "")}">📞 ${escapeHtml(c.phone)}</a>` : "";
+  const websiteLabel = c.website ? c.website.replace(/^https?:\/\//, "").replace(/\/$/, "") : "";
+  const website = c.website ? `<a class="sc-link" href="${escapeHtml(c.website)}" target="_blank" rel="noopener">${escapeHtml(websiteLabel)} ↗</a>` : "";
+  const address = c.address ? `<a class="sc-link" href="${escapeHtml(c.map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`)}" target="_blank" rel="noopener">📍 ${escapeHtml(c.address)}</a>` : "";
+  const hours = c.office_hours ? `<span class="sc-link">Office Hours: ${escapeHtml(c.office_hours)}</span>` : "";
+  const languages = c.languages ? `<span class="sc-link">${escapeHtml(c.languages)}</span>` : "";
+  return `<div class="sc-actions">${[phone, website, address, hours, languages].filter(Boolean).join("")}</div>`;
 }
 
 function emergency() {
@@ -1236,6 +1253,10 @@ function emergency() {
       tone: serviceTone(s.category),
       detail: s.description,
       phone: s.phone,
+      website: s.website,
+      address: s.address,
+      map_url: s.map_url,
+      office_hours: s.office_hours,
       category: s.category,
       languages: s.languages,
     })),
@@ -1279,7 +1300,7 @@ function emergency() {
       <p class="sc-org">— ${c.org}</p>
       ${c.kind === "case"
         ? `<div class="sc-actions"><button class="primary sc-case-btn" data-case-type="${c.case_type}" data-ask-pref="true">Request callback</button></div>`
-        : `<div class="sc-actions"><a class="sc-call" href="tel:${c.phone}">📞 ${c.phone}</a><span class="sc-link">${c.languages || "German"}</span></div>`}
+        : emergencyServiceActions(c)}
     </article>`).join("")}</div>`,
     { back: screens.home, right: iconButton("Rathaus finder", icons.map, `data-screen="${screens.rathaus}"`) }
   );

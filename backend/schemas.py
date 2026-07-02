@@ -173,6 +173,10 @@ class EmergencyServiceOut(BaseModel):
     name: str
     phone: str
     description: Optional[str] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    map_url: Optional[str] = None
+    office_hours: Optional[str] = None
     scope: str
     state_id: Optional[int] = None
     city_id: Optional[int] = None
