@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
@@ -27,8 +27,10 @@ def get_conversations(
         other_id = m.to_user_id if m.from_user_id == current_user.id else m.from_user_id
         if other_id not in seen:
             is_incoming = m.to_user_id == current_user.id
+            other_user = db.query(models.User).filter(models.User.id == other_id).first()
+            other_name = other_user.full_name if other_user else m.from_name
             seen[other_id] = {
-                "name": m.from_name if is_incoming else "You → " + m.from_name,
+                "name": m.from_name if is_incoming else "You → " + other_name,
                 "body": m.body,
                 "is_read": m.is_read,
                 "time": m.created_at.strftime("%H:%M"),
@@ -43,6 +45,9 @@ def send_message(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    recipient = db.query(models.User).filter(models.User.id == data.to_user_id).first()
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Message recipient not found")
     msg = models.Message(
         from_user_id=current_user.id,
         from_name=current_user.full_name,

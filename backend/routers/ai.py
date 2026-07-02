@@ -1,18 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from .. import models, schemas
 from ..auth import get_current_user
 from ..config import settings
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
-SYSTEM_PROMPT = """You are Karibu Chat, the AI concierge for Karibu Ujerumani — a community platform helping Kenyans settle in Germany.
+SYSTEM_PROMPT = """You are Karibu Chat, the AI concierge for Karibu Ujerumani — a community platform for Kenyans living in Germany, including newcomers, students, workers, families, and long-time residents.
 
 Your role:
-- Help users find housing in Berlin (districts, budgets, tips)
+- Help users think through housing options, budgets, host communication, and local search steps
 - Guide through German bureaucracy: Anmeldung, health insurance, bank accounts, residence permits
-- Answer practical questions about daily life in Berlin
-- Recommend neighbourhoods based on budget and lifestyle
-- Provide relocation tips drawn from the Kenyan community in Germany
+- Answer practical questions about daily life, work, study, family, and community in Germany
+- Recommend how to use Karibu Community and Events to connect with people nearby
+- Provide practical tips drawn from the Kenyan community in Germany
 
 Tone: Warm, encouraging, and practical — like a trusted friend who has lived in Germany for years.
 Keep answers concise. Use bullet points for steps. When giving steps, number them clearly.
@@ -56,5 +56,11 @@ def chat(
         )
         return {"reply": response.text}
 
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"AI error: {exc}")
+    except Exception:
+        return {
+            "reply": (
+                "Karibu Chat is connected, but the AI provider is temporarily unavailable. "
+                "For now, use Community or Events for local questions, and use Rathaus Finder "
+                "for official-service locations. Please try Karibu Chat again shortly."
+            )
+        }

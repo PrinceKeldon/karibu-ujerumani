@@ -41,3 +41,20 @@ def login(data: schemas.UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=schemas.UserOut)
 def me(current_user: models.User = Depends(get_current_user)):
     return current_user
+
+
+@router.patch("/me", response_model=schemas.UserOut)
+def update_me(
+    data: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    if data.full_name is not None and data.full_name.strip():
+        current_user.full_name = data.full_name.strip()
+    if data.location is not None:
+        current_user.location = data.location.strip() or current_user.location
+    if data.arrived_at is not None:
+        current_user.arrived_at = data.arrived_at.strip() or None
+    db.commit()
+    db.refresh(current_user)
+    return current_user

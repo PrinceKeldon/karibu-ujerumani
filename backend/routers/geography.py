@@ -113,8 +113,8 @@ def get_rathaus(
     elif state_id:
         q = q.filter(models.RathausOffice.state_id == state_id)
 
-    offices = q.limit(limit * 5).all()
     if lat is not None and lng is not None:
+        offices = q.all()
         with_distance = []
         for office in offices:
             if office.latitude is None or office.longitude is None:
@@ -125,6 +125,7 @@ def get_rathaus(
         offices_with_distance = sorted(with_distance, key=lambda item: item[1])[:limit]
         return [office_out(office, db, distance) for office, distance in offices_with_distance]
 
+    offices = q.limit(limit * 5).all()
     return [office_out(office, db) for office in offices[:limit]]
 
 

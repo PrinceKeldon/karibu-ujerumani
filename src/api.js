@@ -42,6 +42,7 @@ export const api = {
     register: (d) => request("/auth/register", { method: "POST", body: d }),
     login: (d) => request("/auth/login", { method: "POST", body: d }),
     me: () => request("/auth/me"),
+    updateMe: (d) => request("/auth/me", { method: "PATCH", body: d }),
   },
   listings: {
     list: (params = {}) => {

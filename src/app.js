@@ -44,9 +44,12 @@ let state = {
   communityTab: "For You",
   bookingsTab: "Upcoming",
   checklistExpanded: false,
-  rathausQuery: { address: "Karl-Marx-Straße 80", postcode: "12043" },
+  rathausQuery: { address: "", postcode: "" },
   rathausResults: [],
   rathausUserCoords: null,
+  rathausLoading: false,
+  rathausSearchLabel: "",
+  messagesLoaded: false,
   emergencyType: "All",
   listRoomAmenities: [],
   searchQuery: "",
@@ -61,6 +64,15 @@ let state = {
 };
 
 const app = document.querySelector("#app");
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 // ── Icons ─────────────────────────────────────────────────────
 const icons = {
@@ -193,11 +205,31 @@ async function detectLocation() {
 }
 
 async function loadRathaus() {
+  state.rathausLoading = true;
+  if (state.screen === screens.rathaus) render();
   try {
-    const params = state.selectedCity ? { city_id: state.selectedCity.id, limit: 10 } : { limit: 10 };
+    const query = `${state.rathausQuery.address || ""} ${state.rathausQuery.postcode || ""}`.trim();
+    const coords = query ? await geocodeAddress(query) : null;
+    if (query && !coords) {
+      state.rathausUserCoords = null;
+      state.rathausSearchLabel = query;
+      state.rathausResults = [];
+      state.rathausLoading = false;
+      render();
+      showToast("Could not find that location");
+      return;
+    }
+    const params = coords
+      ? { lat: coords.lat, lng: coords.lng, radius_km: 35, limit: 10 }
+      : (state.selectedCity ? { city_id: state.selectedCity.id, limit: 10 } : { limit: 10 });
+    state.rathausUserCoords = coords || null;
+    state.rathausSearchLabel = query;
     state.rathausResults = await api.geo.rathaus(params);
+    state.rathausLoading = false;
     render();
   } catch {
+    state.rathausLoading = false;
+    render();
     showToast("Could not load offices");
   }
 }
@@ -247,8 +279,11 @@ async function loadChecklist() {
 async function loadMessages() {
   try {
     state.conversations = await api.messages.list();
+    state.messagesLoaded = true;
     render();
   } catch (e) {
+    state.messagesLoaded = true;
+    render();
     showToast("Could not load messages");
   }
 }
@@ -414,10 +449,16 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 async function geocodeAddress(query) {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", Berlin, Germany")}&format=json&limit=1&countrycodes=de`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", Germany")}&format=json&limit=1&countrycodes=de`;
     const res = await fetch(url, { headers: { "Accept-Language": "en" } });
     const data = await res.json();
-    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    if (data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+        label: data[0].display_name,
+      };
+    }
   } catch {}
   return null;
 }
@@ -428,10 +469,9 @@ async function initRathausMap() {
 
   const cardEl = document.getElementById("rathaus-cards");
   const offices = state.rathausResults || [];
-  const coords = state.selectedCity
+  const coords = state.rathausUserCoords || (state.selectedCity
     ? { lat: state.selectedCity.latitude, lng: state.selectedCity.longitude }
-    : { lat: 52.5074, lng: 13.3904 };
-  state.rathausUserCoords = coords;
+    : { lat: 52.5074, lng: 13.3904 });
 
   _rathausMap = L.map(container, { zoomControl: true, scrollWheelZoom: false }).setView(
     [coords.lat, coords.lng], 13
@@ -444,7 +484,7 @@ async function initRathausMap() {
   // User location pin (blue circle)
   L.circleMarker([coords.lat, coords.lng], {
     radius: 9, fillColor: "#1a7a3c", color: "#fff", weight: 3, fillOpacity: 1,
-  }).addTo(_rathausMap).bindPopup(`<strong>${state.selectedCity?.name || "Berlin"}</strong>`);
+  }).addTo(_rathausMap).bindPopup(`<strong>${state.rathausSearchLabel || state.selectedCity?.name || "Germany"}</strong>`);
 
   offices.forEach((o, i) => {
     if (o.latitude == null || o.longitude == null) return;
@@ -662,25 +702,8 @@ function home() {
 }
 
 function search() {
-  const q = state.searchQuery.toLowerCase();
-  const filtered = q
-    ? state.listings.filter(
-        (l) =>
-          l.district.toLowerCase().includes(q) ||
-          l.title.toLowerCase().includes(q) ||
-          (l.address || "").toLowerCase().includes(q) ||
-          (l.transit_info || "").toLowerCase().includes(q)
-      )
-    : state.listings;
-
-  let items;
-  if (!state.listings.length) {
-    items = `<div class="loading-state">${icons.spinner} Loading listings…</div>`;
-  } else if (!filtered.length) {
-    items = `<div class="empty-state"><p>No listings match "<strong>${q}</strong>"</p><button class="secondary" data-action="clear-search">Clear search</button></div>`;
-  } else {
-    items = filtered.map((l) => listingCard(l)).join("");
-  }
+  const filtered = filterListings(state.searchQuery);
+  const items = listingResultsHtml(filtered, state.searchQuery);
 
   return shell(
     "Find Housing",
@@ -694,10 +717,43 @@ function search() {
       <button data-action="filter-type">Type⌄</button>
       <button data-action="filter-more">More⌄</button>
     </div>
-    <div class="results-line"><span>${filtered.length} listing${filtered.length !== 1 ? "s" : ""} in ${state.listingFallback ? "Germany" : (state.selectedCity?.name || "Germany")}</span><button class="list-room-link" data-screen="${screens.listRoom}">+ List a room</button></div>
+    <div class="results-line" id="listing-results-line"><span>${filtered.length} listing${filtered.length !== 1 ? "s" : ""} in ${state.listingFallback ? "Germany" : (state.selectedCity?.name || "Germany")}</span><button class="list-room-link" data-screen="${screens.listRoom}">+ List a room</button></div>
     <div class="listing-stack">${items}</div>`,
     { back: screens.home, right: iconButton("List a room", icons.plus, `data-screen="${screens.listRoom}"`) }
   );
+}
+
+function filterListings(query) {
+  const q = query.toLowerCase().trim();
+  if (!q) return state.listings;
+  return state.listings.filter(
+    (l) =>
+      l.district.toLowerCase().includes(q) ||
+      l.title.toLowerCase().includes(q) ||
+      (l.address || "").toLowerCase().includes(q) ||
+      (l.transit_info || "").toLowerCase().includes(q)
+  );
+}
+
+function listingResultsHtml(filtered, query) {
+  const q = query.toLowerCase().trim();
+  if (!state.listings.length) {
+    return `<div class="loading-state">${icons.spinner} Loading listings…</div>`;
+  }
+  if (!filtered.length) {
+    return `<div class="empty-state"><p>No listings match "<strong>${q}</strong>"</p><button class="secondary" data-action="clear-search">Clear search</button></div>`;
+  }
+  return filtered.map((l) => listingCard(l)).join("");
+}
+
+function updateSearchResultsDom() {
+  const filtered = filterListings(state.searchQuery);
+  const stack = document.querySelector(".listing-stack");
+  const line = document.getElementById("listing-results-line");
+  if (stack) stack.innerHTML = listingResultsHtml(filtered, state.searchQuery);
+  if (line) {
+    line.innerHTML = `<span>${filtered.length} listing${filtered.length !== 1 ? "s" : ""} in ${state.listingFallback ? "Germany" : (state.selectedCity?.name || "Germany")}</span><button class="list-room-link" data-screen="${screens.listRoom}">+ List a room</button>`;
+  }
 }
 
 function listRoom() {
@@ -848,7 +904,7 @@ function assistant() {
     </div>
     <div class="chat" id="chat-messages">${state.messages.map((m) => `<div class="bubble ${m.from}">${m.text.replace(/\n/g, "<br>")}</div>`).join("")}</div>
     <div class="action-chips">${chips.map((c) => `<button data-chat="${c}">${c}</button>`).join("")}</div>
-    <form class="composer" id="chat-form"><input id="chat-input" placeholder="Ask anything about life in Germany…" /><button type="submit">🎙</button></form>`,
+    <form class="composer" id="chat-form"><input id="chat-input" placeholder="Ask anything about life in Germany…" /><button type="submit" aria-label="Send message">Send</button></form>`,
     { back: screens.home }
   );
 }
@@ -940,7 +996,9 @@ function timeAgo(iso) {
 function messages() {
   const rows = state.conversations.length
     ? state.conversations.map((c) => `<button class="message-row"><span class="avatar">${c.name[0].toUpperCase()}</span><div><b>${c.name}</b><p>${c.body}</p></div><time>${c.time}</time>${c.unread_count ? `<em>${c.unread_count}</em>` : ""}</button>`).join("")
-    : `<div class="loading-state">${icons.spinner} Loading messages…</div>`;
+    : state.messagesLoaded
+      ? `<div class="empty-state"><p>No messages yet.</p><button class="primary" data-screen="${screens.search}">Find a host</button></div>`
+      : `<div class="loading-state">${icons.spinner} Loading messages…</div>`;
   return shell(
     "Messages",
     `<label class="searchbox small">${icons.search}<input placeholder="Search messages" /></label>
@@ -1034,14 +1092,29 @@ function rathausCards(offices) {
 }
 
 function rathaus() {
+  const query = state.rathausQuery || {};
   return shell(
     "Rathaus Finder",
     `<button class="city-selector-row" data-action="city-selector">
       <span>Official-services city</span><b>${state.selectedCity?.name || "Berlin"}</b><small>${state.selectedCity?.state_name || "Germany"}</small>
     </button>
+    <form class="finder-form" data-rathaus-form>
+      <div class="finder-row">
+        <label>Address or area
+          <input name="address" placeholder="e.g. Sonnenallee 107, Berlin" value="${escapeHtml(query.address || "")}" autocomplete="street-address" />
+        </label>
+        <label>Postcode
+          <input name="postcode" placeholder="12045" value="${escapeHtml(query.postcode || "")}" inputmode="numeric" />
+        </label>
+      </div>
+      <button class="primary" type="submit" ${state.rathausLoading ? "disabled" : ""}>${state.rathausLoading ? icons.spinner + " Searching…" : "Find closest offices"}</button>
+      <p class="route-note">${state.rathausSearchLabel ? `Showing closest offices to ${state.rathausSearchLabel}.` : "Enter your address or area to rank offices by distance. Without an address, Karibu shows offices for the selected city."}</p>
+    </form>
     <div id="rathaus-map" class="leaflet-map-container"></div>
     <div id="rathaus-cards" class="authority-list">
-      ${state.rathausResults.length ? rathausCards(state.rathausResults) : `<div class="loading-state">${icons.spinner} Loading nearby offices…</div>`}
+      ${state.rathausLoading
+        ? `<div class="loading-state">${icons.spinner} Loading nearby offices…</div>`
+        : state.rathausResults.length ? rathausCards(state.rathausResults) : `<div class="empty-state"><p>No offices found near that location.</p><button class="primary" data-action="city-selector">Choose another city</button></div>`}
     </div>`,
     { back: screens.home, right: iconButton("Emergency help", icons.shield, `data-screen="${screens.emergency}"`) }
   );
@@ -1299,9 +1372,44 @@ async function handleChat(text) {
     render();
     scrollChat();
   } catch (e) {
-    state.messages[state.messages.length - 1] = { from: "bot", text: "Sorry, I couldn't reach the AI right now. Please try again." };
+    state.messages[state.messages.length - 1] = { from: "bot", text: e.message || "Sorry, I couldn't reach Karibu Chat right now. Please try again." };
     render();
   }
+}
+
+async function sendDirectMessage(toUserId, body, successTitle = "Message sent") {
+  if (!toUserId) {
+    openSheet("Messaging unavailable", `<p class="sheet-copy">This conversation cannot start yet because the recipient is not linked to a Karibu user account.</p>`, "Close");
+    return;
+  }
+  try {
+    await api.messages.send({ to_user_id: toUserId, body });
+    state.messagesLoaded = false;
+    openSheet(successTitle, `<p class="sheet-copy">The message was sent through Karibu in-app messaging. Phone or WhatsApp details stay private unless both sides choose to share them.</p>`, "View messages");
+    state.sheet._onClose = () => setScreen(screens.messages);
+  } catch (e) {
+    showToast(e.message || "Could not send message");
+  }
+}
+
+function openHostMessageSheet() {
+  const l = state.detailListing;
+  if (!l?.host_id) {
+    openSheet("Message Host", `<p class="sheet-copy">This listing does not have a linked host account yet. Use request to book or contact Karibu Support for help.</p>`, "Close");
+    return;
+  }
+  openSheet(
+    "Message Host",
+    `<form class="sheet-form" id="host-message-form">
+      <input type="hidden" name="to_user_id" value="${l.host_id}" />
+      <label>Your message
+        <textarea name="body" rows="5" required>Hi, I found your listing "${escapeHtml(l.title)}" on Karibu. Is it still available?</textarea>
+      </label>
+      <button class="primary" type="submit">Send in-app message</button>
+      <p class="route-note">Start in Karibu messaging first. Share WhatsApp or phone only after both sides agree.</p>
+    </form>`,
+    "Close"
+  );
 }
 
 async function handleLike(id) {
@@ -1409,6 +1517,19 @@ function handleAction(action) {
     return;
   }
   if (action === "edit-listing") { openSheet("Edit listing", `<p class="sheet-copy">Listing editing coming soon — contact Karibu Support to update your listing details.</p>`, "Got it"); return; }
+  if (action === "message-host" || action === "contact-host") { openHostMessageSheet(); return; }
+  if (action === "support-message") {
+    openSheet("Help & Support", supportCaseForm(), "Close");
+    return;
+  }
+  if (action === "start-verification") {
+    openSheet("Verification", `<p class="sheet-copy">Your verification request has been queued. A Karibu reviewer will contact you through Messages.</p>`, "Done");
+    return;
+  }
+  if (action === "save-settings") {
+    showToast("Settings saved");
+    return;
+  }
   if (action === "toggle-checklist") { state.checklistExpanded = !state.checklistExpanded; render(); return; }
   if (action === "logout") {
     clearToken();
@@ -1428,15 +1549,13 @@ function handleAction(action) {
     "filter-type": ["Type filter", "Private room or verified short stay."],
     "filter-more": ["More filters", "Verified hosts, near U-Bahn, Anmeldung friendly, Wi-Fi, and furnished."],
     "share-listing": ["Share listing", "Shareable link ready for WhatsApp or Messages."],
-    "message-host": ["Message Host", "In-app conversation opened with a prefilled intro and arrival dates. WhatsApp or phone sharing happens only if both sides choose it."],
     "post-menu": ["Post options", "Save, report, mute topic, or follow this neighbourhood."],
     "comment-post": ["Comments", "Full thread with community replies and mentor answers."],
     "share-post": ["Share post", "Community post link copied."],
     "compose-post": ["Create post", "Composer ready: ask a question, share a tip, or post an event."],
     "community-sort": ["Community sorting", "Sort by most helpful, newest, or nearby members."],
-    "message-more": ["Inbox actions", "Mark all read, start support chat, or filter threads."],
+    "message-more": ["Inbox actions", "Open a support chat from Profile > Help & Support, or contact a host from a listing."],
     "booking-details": ["Booking details", "Full dates, host contact, check-in notes, and payment status."],
-    "contact-host": ["Contact Host", "Host conversation opened with booking context."],
     "booking-filter": ["Booking filters", "Filter by status: Upcoming, Confirmed, Pending, Past."],
     "profile-photo": ["Profile photo", "Upload a profile photo and manage verification badge."],
     "saved-listings": ["Saved listings", `You have ${state.savedIds.size} saved listing(s).`],
@@ -1451,15 +1570,65 @@ function handleAction(action) {
 }
 
 function profileSheet(item) {
-  const copy = {
-    "Edit Profile": "Edit name, city, arrival date, languages, and community visibility.",
-    Verification: "Upload ID, add phone/email verification, and request community verification.",
-    "Payment Methods": "Manage payment preferences for booking deposits.",
-    "Saved Searches": "Your saved filters for Neukölln, Wedding, budget under €700.",
-    Settings: "Notification preferences, privacy, language, and account security.",
-    "Help & Support": "Start a Karibu Support case or browse FAQs.",
-  };
-  return `<p class="sheet-copy">${copy[item] || ""}</p>`;
+  const u = state.user || {};
+  if (item === "Edit Profile") {
+    return `<form class="sheet-form" id="profile-form">
+      <label>Full name
+        <input name="full_name" value="${escapeHtml(u.full_name || "")}" required />
+      </label>
+      <label>Location
+        <input name="location" value="${escapeHtml(u.location || "")}" placeholder="Berlin, Germany" />
+      </label>
+      <label>Arrival date or year
+        <input name="arrived_at" value="${escapeHtml(u.arrived_at || "")}" placeholder="e.g. 2023 or March 2024" />
+      </label>
+      <button class="primary" type="submit">Save profile</button>
+    </form>`;
+  }
+  if (item === "Verification") {
+    return `<p class="sheet-copy">Request community verification so hosts and members can trust your profile.</p><button class="primary" data-action="start-verification">Request verification</button>`;
+  }
+  if (item === "Payment Methods") {
+    return `<p class="sheet-copy">No payment method is required for MVP0.1. Keep deposits and rent outside Karibu until payments are formally launched.</p>`;
+  }
+  if (item === "Saved Searches") {
+    return `<p class="sheet-copy">Current saved search:</p><div class="demo-reply">${state.selectedCity?.name || "Germany"} · ${state.searchQuery || "Any area"} · Rooms and short stays</div><button class="primary" data-screen="${screens.search}">Open housing search</button>`;
+  }
+  if (item === "Settings") {
+    return `<div class="settings-list">
+      <label><input type="checkbox" checked /> Community replies</label>
+      <label><input type="checkbox" checked /> Host messages</label>
+      <label><input type="checkbox" /> Event reminders</label>
+      <button class="primary" data-action="save-settings">Save settings</button>
+    </div>`;
+  }
+  if (item === "Help & Support") return supportCaseForm();
+  return `<p class="sheet-copy"></p>`;
+}
+
+function supportCaseForm() {
+  return `<form class="sheet-form" id="support-case-form">
+    <label>What do you need help with?
+      <select name="case_type">
+        <option value="admin">Lost documents / urgent paperwork</option>
+        <option value="pastoral">Care and support</option>
+        <option value="embassy">Embassy support</option>
+        <option value="short_stay">Emergency short-stay</option>
+        <option value="mental_health">Mental health support</option>
+      </select>
+    </label>
+    <label>Details
+      <textarea name="description" rows="4" placeholder="Share enough context for a Karibu responder."></textarea>
+    </label>
+    <label>Preferred contact
+      <select name="contact_pref">
+        <option value="in_app">Karibu in-app message</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="phone">Phone call</option>
+      </select>
+    </label>
+    <button class="primary" type="submit">Open support case</button>
+  </form>`;
 }
 
 // ── Form Submissions ──────────────────────────────────────────
@@ -1485,6 +1654,40 @@ app.addEventListener("submit", async (e) => {
     const fd = new FormData(e.target);
     state.rathausQuery = { address: fd.get("address") || "", postcode: fd.get("postcode") || "" };
     loadRathaus();
+    return;
+  }
+
+  if (e.target.id === "profile-form") {
+    const fd = new FormData(e.target);
+    try {
+      state.user = await api.auth.updateMe({
+        full_name: fd.get("full_name"),
+        location: fd.get("location"),
+        arrived_at: fd.get("arrived_at"),
+      });
+      state.sheet = null;
+      render();
+      showToast("Profile saved");
+    } catch (err) {
+      showToast(err.message || "Could not save profile");
+    }
+    return;
+  }
+
+  if (e.target.id === "host-message-form") {
+    const fd = new FormData(e.target);
+    await sendDirectMessage(parseInt(fd.get("to_user_id"), 10), fd.get("body"));
+    return;
+  }
+
+  if (e.target.id === "support-case-form") {
+    const fd = new FormData(e.target);
+    try {
+      const res = await api.support.createCase(fd.get("case_type"), fd.get("description"), fd.get("contact_pref"));
+      openSheet("Case opened ✓", `<p class="sheet-copy">Your support case has been opened. A Karibu responder will follow up through your preferred route.</p><div class="case-number">${res.case_ref}</div>`, "Done");
+    } catch (err) {
+      showToast(err.message || "Could not open support case");
+    }
     return;
   }
 
@@ -1522,7 +1725,7 @@ app.addEventListener("submit", async (e) => {
 app.addEventListener("input", (e) => {
   if (e.target.id === "search-input") {
     state.searchQuery = e.target.value;
-    render();
+    updateSearchResultsDom();
   }
 });
 

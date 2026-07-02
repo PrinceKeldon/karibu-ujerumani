@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-community-messaging";
+const VERSION = "mvp0.1-20260702-wiring-fixes";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 

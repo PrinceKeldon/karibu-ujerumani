@@ -693,7 +693,16 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: 0 10px 24px rgba(15,23,42,.08);
 }
 .composer input { flex: 1; border: 0; outline: 0; font-size: 13px; }
-.composer button { width: 43px; height: 43px; border-radius: 50%; background: var(--green); color: #fff; }
+.composer button {
+  min-width: 58px;
+  height: 43px;
+  border-radius: 14px;
+  padding: 0 12px;
+  background: var(--green);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
 
 .progress-card {
   display: grid;
@@ -1114,6 +1123,40 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
 .support-card.slate .sc-case-btn { background: #334155; }
 
 /* ── Contact pref sheet ──────────────────────────────────────── */
+.sheet-form,
+.settings-list {
+  display: grid;
+  gap: 12px;
+}
+.sheet-form label,
+.settings-list label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.sheet-form input,
+.sheet-form select,
+.sheet-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+  color: var(--text);
+  outline: 0;
+  font-size: 14px;
+}
+.sheet-form textarea { resize: vertical; line-height: 1.45; }
+.sheet-form input:focus,
+.sheet-form select:focus,
+.sheet-form textarea:focus { border-color: var(--green); }
+.settings-list label {
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  color: var(--text);
+}
 .pref-options { display: grid; gap: 10px; }
 .pref-opt {
   width: 100%;

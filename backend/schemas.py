@@ -25,6 +25,12 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    location: Optional[str] = None
+    arrived_at: Optional[str] = None
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
