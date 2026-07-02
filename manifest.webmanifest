@@ -1,13 +1,15 @@
 {
   "name": "Karibu Ujerumani",
   "short_name": "Karibu",
-  "description": "Housing, official services, emergency support, and community guidance for settling in Germany.",
+  "description": "For settling in Germany with housing, official services, emergency support, Karibu Chat, and community guidance.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f5f5f5",
   "theme_color": "#1a7a3c",
   "orientation": "portrait",
+  "lang": "en",
+  "dir": "ltr",
   "categories": ["housing", "travel", "utilities", "social"],
   "icons": [
     {
@@ -21,17 +23,26 @@
     {
       "name": "Find Housing",
       "short_name": "Housing",
+      "description": "Search rooms and apartments",
       "url": "/#search"
     },
     {
       "name": "Emergency Help",
       "short_name": "Emergency",
+      "description": "Emergency support and location-aware contacts",
       "url": "/#emergency"
     },
     {
       "name": "Rathaus Finder",
       "short_name": "Rathaus",
+      "description": "Find official offices near you",
       "url": "/#rathaus"
+    },
+    {
+      "name": "Karibu Chat",
+      "short_name": "Chat",
+      "description": "Ask your AI concierge about settling in Germany",
+      "url": "/#assistant"
     }
   ]
 }

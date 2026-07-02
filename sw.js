@@ -1,12 +1,14 @@
-const VERSION = "mvp0.1-20260702-url-alignment";
+const VERSION = "mvp0.1-20260702-landing";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 
 const STATIC_ASSETS = [
   "/",
   "/index.html",
+  "/landing.html",
   "/offline.html",
   "/manifest.webmanifest",
+  "/og-image.svg",
   "/icons/icon.svg",
   "/src/config.js",
   "/src/app.js",

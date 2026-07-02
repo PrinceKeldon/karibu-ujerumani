@@ -82,5 +82,14 @@ http://127.0.0.1:5173/
 - `sw.js` is the active service worker.
 - `offline.html` is the navigation fallback.
 - `icons/icon.svg` is the current install icon.
+- `landing.html` is the marketing/install/share page.
+- `og-image.svg` is the current social preview image.
 
 After any change to cached files, bump the service worker `VERSION` constant so browsers pick up the new assets.
+
+Public routes:
+
+```text
+https://www.karibujerumani.online/              -> app
+https://www.karibujerumani.online/landing.html -> landing/share page
+```
