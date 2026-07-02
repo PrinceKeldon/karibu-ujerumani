@@ -83,7 +83,10 @@ let state = {
 };
 
 const app = document.querySelector("#app");
-const isAdminRoute = window.location.pathname.replace(/\/$/, "") === "/admin" || window.location.pathname.endsWith("/admin.html");
+const adminPath = window.location.pathname.replace(/\/$/, "");
+const isAdminRoute = adminPath === "/admin" || window.location.pathname.endsWith("/admin.html") || window.location.hash === "#admin";
+if (isAdminRoute) sessionStorage.setItem("karibu_admin_route", "1");
+const wantsAdminMode = () => isAdminRoute || sessionStorage.getItem("karibu_admin_route") === "1";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -153,7 +156,7 @@ function setScreen(screen, opts = {}) {
   state.screen = screen;
   state.sheet = null;
   state.authError = null;
-  if (!isAdminRoute) history.replaceState(null, "", `#${screen}`);
+  if (!wantsAdminMode()) history.replaceState(null, "", `#${screen}`);
   render();
   // Kick off data loading for screens that need it
   if (screen === screens.home) {
@@ -386,7 +389,7 @@ async function initAuth() {
     state.messages = [
       { from: "bot", text: `Hi ${user.full_name.split(" ")[0]}! 👋\nHow can I help with life in Germany today?` },
     ];
-    if (isAdminRoute) {
+    if (wantsAdminMode()) {
       setScreen(screens.admin);
     } else {
       setScreen(screens.home);
@@ -411,7 +414,7 @@ async function doLogin(email, password) {
     state.messages = [
       { from: "bot", text: `Hi ${data.user.full_name.split(" ")[0]}! 👋\nHow can I help with life in Germany today?` },
     ];
-    if (isAdminRoute) {
+    if (wantsAdminMode()) {
       setScreen(screens.admin);
     } else {
       setScreen(screens.home);
@@ -437,7 +440,7 @@ async function doRegister(email, password, fullName) {
     state.messages = [
       { from: "bot", text: `Welcome to Karibu Ujerumani, ${data.user.full_name.split(" ")[0]}! 🎉\nI'm here for community, services, housing, and everyday life in Germany.` },
     ];
-    if (isAdminRoute) {
+    if (wantsAdminMode()) {
       setScreen(screens.admin);
     } else {
       setScreen(screens.home);
@@ -1948,6 +1951,7 @@ function handleAction(action) {
   if (action === "toggle-checklist") { state.checklistExpanded = !state.checklistExpanded; render(); return; }
   if (action === "logout") {
     clearToken();
+    if (wantsAdminMode()) sessionStorage.removeItem("karibu_admin_route");
     state.user = null;
     state.listings = [];
     state.savedIds = new Set();

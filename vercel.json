@@ -11,6 +11,7 @@
     { "source": "/ai/:path*", "destination": "/api/index.py" },
     { "source": "/support/:path*", "destination": "/api/index.py" },
     { "source": "/admin-api/:path*", "destination": "/api/index.py" },
-    { "source": "/admin", "destination": "/index.html" }
+    { "source": "/admin", "destination": "/index.html" },
+    { "source": "/admin/", "destination": "/index.html" }
   ]
 }

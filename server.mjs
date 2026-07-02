@@ -17,7 +17,8 @@ const types = {
 
 createServer((request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host}`);
-  const requested = normalize(url.pathname === "/" || url.pathname === "/admin" ? "/index.html" : url.pathname);
+  const requestedPath = url.pathname.replace(/\/$/, "") || "/";
+  const requested = normalize(requestedPath === "/" || requestedPath === "/admin" ? "/index.html" : url.pathname);
   const file = join(root, requested);
 
   if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) {

@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-admin-dashboard";
+const VERSION = "mvp0.1-20260702-admin-route-fix";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 
@@ -11,9 +11,9 @@ const STATIC_ASSETS = [
   "/og-image.svg",
   "/icons/icon.svg",
   "/src/config.js",
-  "/src/app.js",
+  "/src/app.js?v=admin-route-fix-20260702",
   "/src/api.js",
-  "/src/styles.css"
+  "/src/styles.css?v=admin-route-fix-20260702"
 ];
 
 const CACHEABLE_API_PATHS = [
