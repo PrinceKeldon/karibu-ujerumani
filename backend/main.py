@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routers import auth, listings, community, checklist, messages, bookings, ai, support, geography
+from .config import settings
 from .seed import run_seed
 
 Base.metadata.create_all(bind=engine)
@@ -11,6 +12,7 @@ app = FastAPI(title="Karibu Ujerumani API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

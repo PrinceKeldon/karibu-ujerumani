@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 
 const port = Number(process.argv[2] || 5173);
+const host = process.env.HOST || "0.0.0.0";
 const root = process.cwd();
 
 const types = {
@@ -30,6 +31,7 @@ createServer((request, response) => {
     "cache-control": "no-store",
   });
   createReadStream(file).pipe(response);
-}).listen(port, "127.0.0.1", () => {
-  console.log(`Karibu Ujerumani preview: http://127.0.0.1:${port}/`);
+}).listen(port, host, () => {
+  const displayHost = host === "0.0.0.0" ? "127.0.0.1" : host;
+  console.log(`Karibu Ujerumani preview: http://${displayHost}:${port}/`);
 });
