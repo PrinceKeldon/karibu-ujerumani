@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-rathaus-osm";
+const VERSION = "mvp0.1-20260702-emergency-shortstay";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 

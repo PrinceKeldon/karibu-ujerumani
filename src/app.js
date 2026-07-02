@@ -1235,11 +1235,12 @@ function emergencyServiceActions(c) {
 }
 
 function emergency() {
-  const tabs = ["All", "Poison", "Mental health", "Embassy", "Immigrant support", "Care"];
+  if (state.emergencyType === "Poison") state.emergencyType = "All";
+  const tabs = ["All", "Mental health", "Embassy", "Immigrant support", "Care", "Short stay"];
   const services = [
     ...(state.emergencyData?.national || []),
     ...(state.emergencyData?.state_specific || []),
-  ];
+  ].filter((s) => s.category !== "poison");
   const cards = [
     ...services.map((s) => ({
       kind: "service",
@@ -1267,6 +1268,18 @@ function emergency() {
       detail: "Speak with a trusted community leader for pastoral care, emergencies, grief and crisis support.",
       category: "care",
       case_type: "pastoral",
+    },
+    {
+      kind: "case",
+      type: "Short stay",
+      title: "Emergency short-stay help",
+      org: "Karibu + local shelter network",
+      availability: "Tonight",
+      tone: "gold",
+      detail: "Request urgent guidance for temporary safe accommodation. Karibu will triage the case and point you toward vetted community or local shelter options.",
+      category: "short_stay",
+      case_type: "short_stay",
+      action: "Request safe stay",
     },
   ];
   const contacts = state.emergencyType === "All"
@@ -1296,7 +1309,7 @@ function emergency() {
       <p class="sc-detail">${c.detail}</p>
       <p class="sc-org">— ${c.org}</p>
       ${c.kind === "case"
-        ? `<div class="sc-actions"><button class="primary sc-case-btn" data-case-type="${c.case_type}" data-ask-pref="true">Request callback</button></div>`
+        ? `<div class="sc-actions"><button class="primary sc-case-btn" data-case-type="${c.case_type}" data-ask-pref="true">${c.action || "Request callback"}</button></div>`
         : emergencyServiceActions(c)}
     </article>`).join("")}</div>`,
     { back: screens.home, right: iconButton("Rathaus finder", icons.map, `data-screen="${screens.rathaus}"`) }
