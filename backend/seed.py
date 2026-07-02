@@ -100,6 +100,7 @@ def ensure_schema_compatibility() -> None:
     user_columns = {c["name"] for c in inspector.get_columns("users")} if "users" in table_names else set()
     event_columns = {c["name"] for c in inspector.get_columns("events")} if "events" in table_names else set()
     emergency_columns = {c["name"] for c in inspector.get_columns("emergency_services")} if "emergency_services" in table_names else set()
+    rathaus_columns = {c["name"] for c in inspector.get_columns("rathaus_offices")} if "rathaus_offices" in table_names else set()
     statements = []
     if "state_id" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN state_id INTEGER")
@@ -115,6 +116,10 @@ def ensure_schema_compatibility() -> None:
         for column in ("website", "address", "map_url", "office_hours"):
             if column not in emergency_columns:
                 statements.append(f"ALTER TABLE emergency_services ADD COLUMN {column} VARCHAR")
+    if "rathaus_offices" in table_names:
+        for column in ("source", "source_url"):
+            if column not in rathaus_columns:
+                statements.append(f"ALTER TABLE rathaus_offices ADD COLUMN {column} VARCHAR")
     with engine.begin() as conn:
         for statement in statements:
             conn.execute(text(statement))

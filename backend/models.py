@@ -81,6 +81,8 @@ class RathausOffice(Base):
     appointment_url = Column(String, nullable=True)
     osm_id = Column(String, unique=True, nullable=True)
     google_place_id = Column(String, nullable=True)
+    source = Column(String, nullable=True)
+    source_url = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)

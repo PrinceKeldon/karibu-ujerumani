@@ -77,6 +77,12 @@ export const api = {
       ).toString();
       return request(`/geo/rathaus${qs ? "?" + qs : ""}`);
     },
+    rathausSearch: (params = {}) => {
+      const qs = new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => v != null))
+      ).toString();
+      return request(`/geo/rathaus/search${qs ? "?" + qs : ""}`);
+    },
     rathausDetail: (id) => request(`/geo/rathaus/${id}`),
     verifyRathaus: (id) => request(`/geo/rathaus/${id}/verify`, { method: "POST" }),
     emergency: (params = {}) => {

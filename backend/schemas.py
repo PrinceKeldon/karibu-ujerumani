@@ -159,6 +159,8 @@ class RathausOfficeOut(BaseModel):
     longitude: Optional[float] = None
     opening_hours: Optional[str] = "{}"
     appointment_url: Optional[str] = None
+    source: Optional[str] = None
+    source_url: Optional[str] = None
     is_verified: bool = False
     city_name: Optional[str] = None
     state_name: Optional[str] = None
@@ -166,6 +168,14 @@ class RathausOfficeOut(BaseModel):
     distance_km: Optional[float] = None
 
     model_config = {"from_attributes": True}
+
+
+class RathausSearchOut(BaseModel):
+    query: str
+    latitude: float
+    longitude: float
+    label: Optional[str] = None
+    offices: list[RathausOfficeOut]
 
 
 class EmergencyServiceOut(BaseModel):

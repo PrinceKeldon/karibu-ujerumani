@@ -220,28 +220,24 @@ async function loadRathaus() {
   if (state.screen === screens.rathaus) render();
   try {
     const query = `${state.rathausQuery.address || ""} ${state.rathausQuery.postcode || ""}`.trim();
-    const coords = query ? await geocodeAddress(query) : null;
-    if (query && !coords) {
+    if (query) {
+      const result = await api.geo.rathausSearch({ address: query, radius_km: 35, limit: 10 });
+      state.rathausUserCoords = { lat: result.latitude, lng: result.longitude, label: result.label };
+      state.rathausSearchLabel = result.label || query;
+      state.rathausResults = result.offices || [];
+    } else {
+      const params = state.selectedCity ? { city_id: state.selectedCity.id, limit: 10 } : { limit: 10 };
       state.rathausUserCoords = null;
-      state.rathausSearchLabel = query;
-      state.rathausResults = [];
-      state.rathausLoading = false;
-      render();
-      showToast("Could not find that location");
-      return;
+      state.rathausSearchLabel = "";
+      state.rathausResults = await api.geo.rathaus(params);
     }
-    const params = coords
-      ? { lat: coords.lat, lng: coords.lng, radius_km: 35, limit: 10 }
-      : (state.selectedCity ? { city_id: state.selectedCity.id, limit: 10 } : { limit: 10 });
-    state.rathausUserCoords = coords || null;
-    state.rathausSearchLabel = query;
-    state.rathausResults = await api.geo.rathaus(params);
     state.rathausLoading = false;
     render();
-  } catch {
+  } catch (err) {
     state.rathausLoading = false;
+    state.rathausResults = [];
     render();
-    showToast("Could not load offices");
+    showToast(err.message || "Could not load offices");
   }
 }
 
@@ -1161,17 +1157,18 @@ function rathausCards(offices) {
   return offices.map((o, i) => `<article class="authority-card" id="office-card-${i}">
     <div class="office-num">${i + 1}</div>
     <div class="office-body">
-      <h2>${o.name}</h2>
-      <p class="office-addr">📍 ${o.address || o.city_name || "Germany"}</p>
+      <h2>${escapeHtml(o.name)}</h2>
+      <p class="office-addr">📍 ${escapeHtml(o.address || o.city_name || "Germany")}</p>
       <div class="office-meta">
         <span class="dist-pill">${o.office_type === "auslaenderbehorde" ? "Visa / residence" : "Registration"}</span>
         ${o.distance_km ? `<span>🚶 ${o.distance_km.toFixed(1)} km</span>` : ""}
-        ${o.phone ? `<span>📞 ${o.phone}</span>` : ""}
+        ${o.phone ? `<span>📞 ${escapeHtml(o.phone)}</span>` : ""}
       </div>
-      <div class="chips"><span>${o.city_name || state.selectedCity?.name || "City"}</span><span>${o.state_abbreviation || ""}</span>${o.is_verified ? "<b>Verified</b>" : ""}</div>
+      <div class="chips"><span>${escapeHtml(o.city_name || state.selectedCity?.name || "Nearby")}</span><span>${escapeHtml(o.state_abbreviation || "")}</span>${o.is_verified ? "<b>Verified</b>" : o.source === "openstreetmap" ? "<span>OSM result</span>" : ""}</div>
       <div class="office-cta">
-        <a class="secondary mini-cta" href="${o.appointment_url || o.website || "https://www.115.de/"}" target="_blank" rel="noopener">Book appointment ↗</a>
+        <a class="secondary mini-cta" href="${escapeHtml(o.appointment_url || o.website || "https://www.115.de/")}" target="_blank" rel="noopener">Book appointment ↗</a>
         <a class="directions-link" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.address || o.city_name || state.selectedCity?.name || "Germany")}" target="_blank" rel="noopener">Directions ↗</a>
+        ${o.source_url ? `<a class="directions-link" href="${escapeHtml(o.source_url)}" target="_blank" rel="noopener">Source ↗</a>` : ""}
       </div>
     </div>
   </article>`).join("");
@@ -1194,13 +1191,13 @@ function rathaus() {
         </label>
       </div>
       <button class="primary" type="submit" ${state.rathausLoading ? "disabled" : ""}>${state.rathausLoading ? icons.spinner + " Searching…" : "Find closest offices"}</button>
-      <p class="route-note">${state.rathausSearchLabel ? `Showing closest offices to ${state.rathausSearchLabel}.` : "Enter your address or area to rank offices by distance. Without an address, Karibu shows offices for the selected city."}</p>
+      <p class="route-note">${state.rathausSearchLabel ? `Showing closest municipal offices to ${escapeHtml(state.rathausSearchLabel)}. Confirm services and appointment rules before visiting.` : "Enter your address or area to discover and rank nearby municipal offices. Without an address, Karibu shows offices for the selected city."}</p>
     </form>
     <div id="rathaus-map" class="leaflet-map-container"></div>
     <div id="rathaus-cards" class="authority-list">
       ${state.rathausLoading
         ? `<div class="loading-state">${icons.spinner} Loading nearby offices…</div>`
-        : state.rathausResults.length ? rathausCards(state.rathausResults) : `<div class="empty-state"><p>No offices found near that location.</p><button class="primary" data-action="city-selector">Choose another city</button></div>`}
+        : state.rathausResults.length ? rathausCards(state.rathausResults) : `<div class="empty-state"><p>No offices found near that location yet.</p><button class="primary" data-action="city-selector">Choose another city</button></div>`}
     </div>`,
     { back: screens.home, right: iconButton("Emergency help", icons.shield, `data-screen="${screens.emergency}"`) }
   );
