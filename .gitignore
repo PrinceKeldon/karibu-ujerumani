@@ -1,0 +1,13 @@
+venv/
+backend/.venv311/
+node_modules/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+*.sqlite
+*.db
+dist/
+build/
+.netlify/

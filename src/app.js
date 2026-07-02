@@ -1,0 +1,1607 @@
+import { api, getToken, setToken, clearToken } from "./api.js";
+
+// ── Screens ───────────────────────────────────────────────────
+const screens = {
+  splash: "splash",
+  login: "login",
+  register: "register",
+  home: "home",
+  search: "search",
+  detail: "detail",
+  listRoom: "listRoom",
+  assistant: "assistant",
+  checklist: "checklist",
+  community: "community",
+  messages: "messages",
+  bookings: "bookings",
+  profile: "profile",
+  rathaus: "rathaus",
+  emergency: "emergency",
+};
+
+// ── State ─────────────────────────────────────────────────────
+let state = {
+  screen: screens.splash,
+  user: null,
+
+  // API-loaded data
+  listings: [],
+  savedIds: new Set(),
+  communityPosts: [],
+  events: [],
+  bookings: [],
+  conversations: [],
+  checklistDone: new Set(),
+  detailListing: null,
+  states: [],
+  cities: [],
+  selectedCity: null,
+  locationStatus: "Berlin fallback",
+  listingFallback: false,
+  emergencyData: null,
+
+  // UI state
+  communityTab: "For You",
+  bookingsTab: "Upcoming",
+  checklistExpanded: false,
+  rathausQuery: { address: "Karl-Marx-Straße 80", postcode: "12043" },
+  rathausResults: [],
+  rathausUserCoords: null,
+  emergencyType: "All",
+  listRoomAmenities: [],
+  searchQuery: "",
+  messages: [],
+  sheet: null,
+  carousel: null,
+  toast: "",
+  loading: false,
+  listRoomLoading: false,
+  authError: null,
+  authForm: { email: "", password: "", name: "" },
+};
+
+const app = document.querySelector("#app");
+
+// ── Icons ─────────────────────────────────────────────────────
+const icons = {
+  home: `<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>`,
+  search: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>`,
+  bot: `<svg viewBox="0 0 24 24"><path d="M4 5h16v10a2 2 0 0 1-2 2H9l-5 4z"/><path d="M8 9h8M8 13h5"/></svg>`,
+  msg: `<svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg>`,
+  user: `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>`,
+  back: `<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>`,
+  bell: `<svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7M10 20h4"/></svg>`,
+  heart: `<svg viewBox="0 0 24 24"><path d="M20.8 5.6a5.4 5.4 0 0 0-7.6 0L12 6.8l-1.2-1.2a5.4 5.4 0 1 0-7.6 7.6L12 22l8.8-8.8a5.4 5.4 0 0 0 0-7.6z"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>`,
+  map: `<svg viewBox="0 0 24 24"><path d="M12 21s7-5.3 7-12a7 7 0 1 0-14 0c0 6.7 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>`,
+  shield: `<svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3 8.5 7 10 4-1.5 7-5 7-10V6z"/><path d="M12 8v5M12 16h.01"/></svg>`,
+  spinner: `<svg class="spin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="28 57"/></svg>`,
+};
+
+const nav = [
+  ["Home", screens.home, icons.home],
+  ["Search", screens.search, icons.search],
+  ["Assistant", screens.assistant, icons.bot],
+  ["Messages", screens.messages, icons.msg],
+  ["Profile", screens.profile, icons.user],
+];
+
+// ── Utilities ─────────────────────────────────────────────────
+function iconButton(label, icon, action = "") {
+  return `<button class="icon-button" ${action} aria-label="${label}">${icon}</button>`;
+}
+
+// Toast uses direct DOM so it doesn't trigger a full render (which would destroy the map)
+function showToast(msg) {
+  let el = document.getElementById("global-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "global-toast";
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add("visible");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.remove("visible"), 2200);
+}
+
+function openSheet(title, body, cta = "Done") {
+  state.sheet = { title, body, cta };
+  render();
+}
+
+function setScreen(screen, opts = {}) {
+  // Destroy map when leaving rathaus
+  if (state.screen === screens.rathaus && screen !== screens.rathaus) {
+    if (_rathausMap) { _rathausMap.remove(); _rathausMap = null; }
+    state.rathausResults = [];
+    state.rathausUserCoords = null;
+  }
+  state.screen = screen;
+  state.sheet = null;
+  state.authError = null;
+  history.replaceState(null, "", `#${screen}`);
+  render();
+  // Kick off data loading for screens that need it
+  if (screen === screens.search) loadListings();
+  if (screen === screens.community) loadCommunity(state.communityTab);
+  if (screen === screens.checklist) loadChecklist();
+  if (screen === screens.messages) loadMessages();
+  if (screen === screens.bookings) loadBookings();
+  if (screen === screens.rathaus) loadRathaus();
+  if (screen === screens.emergency) loadEmergency();
+}
+
+// ── Data loaders ──────────────────────────────────────────────
+async function loadListings(params = {}) {
+  try {
+    const cityParams = state.selectedCity ? { city_id: state.selectedCity.id, ...params } : params;
+    let data = await api.listings.list(cityParams);
+    state.listingFallback = false;
+    if (state.selectedCity && !data.length) {
+      data = await api.listings.list(params);
+      state.listingFallback = true;
+    }
+    state.listings = data;
+    state.savedIds = new Set(data.filter((l) => l.is_saved).map((l) => l.id));
+    render();
+  } catch (e) {
+    showToast("Could not load listings");
+  }
+}
+
+async function loadGeography() {
+  try {
+    const [states, cities] = await Promise.all([api.geo.states(), api.geo.cities()]);
+    state.states = states;
+    state.cities = cities;
+    const savedCityId = Number(localStorage.getItem("karibu_city_id"));
+    state.selectedCity =
+      cities.find((c) => c.id === savedCityId) ||
+      cities.find((c) => c.name === "Berlin") ||
+      cities[0] ||
+      null;
+    if (state.selectedCity) state.locationStatus = `${state.selectedCity.name}, ${state.selectedCity.state_abbreviation}`;
+    render();
+    detectLocation();
+  } catch {
+    showToast("Could not load German cities");
+  }
+}
+
+async function detectLocation() {
+  if (!navigator.geolocation || localStorage.getItem("karibu_city_id")) return;
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const cities = await api.geo.citiesNear(pos.coords.latitude, pos.coords.longitude, 100);
+        if (cities[0]) {
+          state.selectedCity = cities[0];
+          state.locationStatus = `${cities[0].name}, ${cities[0].state_abbreviation} · GPS`;
+          localStorage.setItem("karibu_city_id", String(cities[0].id));
+          loadListings();
+          render();
+        }
+      } catch {
+        state.locationStatus = "Berlin fallback";
+      }
+    },
+    () => { state.locationStatus = "Berlin fallback"; },
+    { timeout: 3500, maximumAge: 1000 * 60 * 60 }
+  );
+}
+
+async function loadRathaus() {
+  try {
+    const params = state.selectedCity ? { city_id: state.selectedCity.id, limit: 10 } : { limit: 10 };
+    state.rathausResults = await api.geo.rathaus(params);
+    render();
+  } catch {
+    showToast("Could not load offices");
+  }
+}
+
+async function loadEmergency() {
+  const cacheKey = `karibu_emergency_${state.selectedCity?.state_id || "national"}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    state.emergencyData = JSON.parse(cached);
+    render();
+  }
+  try {
+    const data = await api.geo.emergency(state.selectedCity ? { state_id: state.selectedCity.state_id } : {});
+    state.emergencyData = data;
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    render();
+  } catch {
+    if (!cached) showToast("Using offline emergency fallback");
+  }
+}
+
+async function loadCommunity(tab) {
+  try {
+    if (tab === "Events") {
+      const data = await api.community.events();
+      state.events = data;
+    } else {
+      const data = await api.community.posts(tab);
+      state.communityPosts = data;
+    }
+    render();
+  } catch (e) {
+    showToast("Could not load community");
+  }
+}
+
+async function loadChecklist() {
+  try {
+    const data = await api.checklist.get();
+    state.checklistDone = new Set(data.completed);
+    render();
+  } catch (e) {
+    showToast("Could not load checklist");
+  }
+}
+
+async function loadMessages() {
+  try {
+    state.conversations = await api.messages.list();
+    render();
+  } catch (e) {
+    showToast("Could not load messages");
+  }
+}
+
+async function loadBookings() {
+  try {
+    state.bookings = await api.bookings.list();
+    render();
+  } catch (e) {
+    showToast("Could not load bookings");
+  }
+}
+
+// ── Auth ──────────────────────────────────────────────────────
+async function initAuth() {
+  if (!getToken()) { setScreen(screens.login); return; }
+  try {
+    const user = await api.auth.me();
+    state.user = user;
+    state.messages = [
+      { from: "bot", text: `Hi ${user.full_name.split(" ")[0]}! 👋\nHow can I help you settle in Germany?` },
+    ];
+    setScreen(screens.home);
+    await loadGeography();
+    loadListings(); // pre-load listings for home recommendations
+  } catch {
+    clearToken();
+    setScreen(screens.login);
+  }
+}
+
+async function doLogin(email, password) {
+  state.loading = true;
+  state.authError = null;
+  render();
+  try {
+    const data = await api.auth.login({ email, password });
+    setToken(data.access_token);
+    state.user = data.user;
+    state.loading = false;
+    state.messages = [
+      { from: "bot", text: `Hi ${data.user.full_name.split(" ")[0]}! 👋\nHow can I help you settle in Germany?` },
+    ];
+    setScreen(screens.home);
+    await loadGeography();
+    loadListings();
+  } catch (e) {
+    state.loading = false;
+    state.authError = e.message;
+    render();
+  }
+}
+
+async function doRegister(email, password, fullName) {
+  state.loading = true;
+  state.authError = null;
+  render();
+  try {
+    const data = await api.auth.register({ email, password, full_name: fullName });
+    setToken(data.access_token);
+    state.user = data.user;
+    state.loading = false;
+    state.messages = [
+      { from: "bot", text: `Welcome to Karibu Ujerumani, ${data.user.full_name.split(" ")[0]}! 🎉\nI'm here to help you settle in Germany.` },
+    ];
+    setScreen(screens.home);
+    await loadGeography();
+    loadListings();
+  } catch (e) {
+    state.loading = false;
+    state.authError = e.message;
+    render();
+  }
+}
+
+// ── Shared UI ─────────────────────────────────────────────────
+function demoLayer() {
+  const sheet = state.sheet
+    ? `<div class="demo-backdrop" data-action="close-sheet">
+        <section class="demo-sheet" role="dialog" aria-modal="true">
+          <div class="sheet-handle"></div>
+          <h2>${state.sheet.title}</h2>
+          <div class="sheet-body">${state.sheet.body}</div>
+          <button class="primary" data-action="close-sheet">${state.sheet.cta}</button>
+        </section>
+      </div>`
+    : "";
+  const carousel = state.carousel
+    ? `<div class="demo-backdrop media-backdrop" data-action="close-carousel">
+        <section class="media-carousel" role="dialog" aria-modal="true" aria-label="Listing images">
+          <button class="media-close" data-action="close-carousel" aria-label="Close image carousel">×</button>
+          <img src="${state.carousel.images[state.carousel.index]}" alt="Listing image ${state.carousel.index + 1}" />
+          <div class="media-controls">
+            <button data-action="carousel-prev" aria-label="Previous image">‹</button>
+            <span>${state.carousel.index + 1} / ${state.carousel.images.length}</span>
+            <button data-action="carousel-next" aria-label="Next image">›</button>
+          </div>
+        </section>
+      </div>`
+    : "";
+  return sheet + carousel;
+}
+
+function bottomNav() {
+  const unread = state.conversations.filter((c) => !c.is_read).length;
+  return `<nav class="bottom-nav">${nav
+    .map(([label, screen, icon]) => {
+      const active = state.screen === screen ||
+        (screen === screens.search && [screens.detail, screens.rathaus].includes(state.screen));
+      const badge = label === "Messages" && unread
+        ? `<span class="nav-badge">${unread}</span>`
+        : "";
+      return `<button class="${active ? "active" : ""}" data-screen="${screen}">${badge}${icon}<span>${label}</span></button>`;
+    })
+    .join("")}</nav>`;
+}
+
+function shell(title, body, options = {}) {
+  const left = options.back
+    ? iconButton("Back", icons.back, `data-screen="${options.back}"`)
+    : "";
+  const right = options.right || "";
+  return `<section class="phone-screen ${options.className || ""}">
+    <header class="topbar">${left}<strong>${title}</strong><div class="topbar-right">${right}</div></header>
+    <div class="screen-body">${body}</div>
+    ${demoLayer()}
+    ${options.hideNav ? "" : bottomNav()}
+  </section>`;
+}
+
+// ── Rathaus / Emergency static fallback data ──────────────────
+// Kept as a UI fallback; primary data now comes from /geo.
+const BERLIN_BUERGERAEMTER = [
+  { name: "Bürgeramt Rathaus Neukölln", district: "Neukölln", address: "Karl-Marx-Straße 83, 12040 Berlin", lat: 52.4757, lng: 13.4348, phone: "030 115", services: ["Anmeldung", "ID card", "Residence certificate", "Address change"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Sonnenallee", district: "Neukölln", address: "Sonnenallee 107, 12045 Berlin", lat: 52.4798, lng: 13.4415, phone: "030 115", services: ["Anmeldung", "Address change", "Documents"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Schöneberg", district: "Schöneberg", address: "Martin-Luther-Straße 105, 10825 Berlin", lat: 52.4885, lng: 13.3571, phone: "030 115", services: ["Anmeldung", "ID card", "Passport"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Kreuzberg", district: "Kreuzberg", address: "Yorckstraße 4-11, 10965 Berlin", lat: 52.4927, lng: 13.3802, phone: "030 115", services: ["Anmeldung", "ID card", "Driver's licence"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Tempelhof", district: "Tempelhof", address: "Tempelhofer Damm 165, 12099 Berlin", lat: 52.4761, lng: 13.3854, phone: "030 115", services: ["Anmeldung", "Documents", "Residence permit"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Mitte", district: "Mitte", address: "Karl-Marx-Allee 31, 10178 Berlin", lat: 52.5228, lng: 13.4140, phone: "030 115", services: ["Anmeldung", "ID card", "Passport", "Residence certificate"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Wedding", district: "Wedding", address: "Müllerstraße 147, 13353 Berlin", lat: 52.5447, lng: 13.3598, phone: "030 115", services: ["Anmeldung", "ID card", "Address change"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Charlottenburg", district: "Charlottenburg", address: "Otto-Suhr-Allee 100, 10585 Berlin", lat: 52.5161, lng: 13.3036, phone: "030 115", services: ["Anmeldung", "ID card", "Passport"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Prenzlauer Berg", district: "Prenzlauer Berg", address: "Fröbelstraße 17, 10405 Berlin", lat: 52.5380, lng: 13.4200, phone: "030 115", services: ["Anmeldung", "Documents"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Friedrichshain", district: "Friedrichshain", address: "Frankfurter Allee 35-37, 10247 Berlin", lat: 52.5133, lng: 13.4568, phone: "030 115", services: ["Anmeldung", "ID card", "Address change"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Lichtenberg", district: "Lichtenberg", address: "Möllendorffstraße 6, 10367 Berlin", lat: 52.5243, lng: 13.4723, phone: "030 115", services: ["Anmeldung", "Documents", "Residence permit"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Spandau", district: "Spandau", address: "Carl-Schurz-Straße 2-6, 13597 Berlin", lat: 52.5364, lng: 13.2041, phone: "030 115", services: ["Anmeldung", "ID card", "Passport"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+  { name: "Bürgeramt Pankow", district: "Pankow", address: "Berliner Straße 120-121, 13187 Berlin", lat: 52.5667, lng: 13.4022, phone: "030 115", services: ["Anmeldung", "Documents"], booking: "https://service.berlin.de/dienstleistung/120686/" },
+];
+
+// ── Map lifecycle ─────────────────────────────────────────────
+let _rathausMap = null;
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function geocodeAddress(query) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", Berlin, Germany")}&format=json&limit=1&countrycodes=de`;
+    const res = await fetch(url, { headers: { "Accept-Language": "en" } });
+    const data = await res.json();
+    if (data.length > 0) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch {}
+  return null;
+}
+
+async function initRathausMap() {
+  const container = document.getElementById("rathaus-map");
+  if (!container || _rathausMap) return;
+
+  const cardEl = document.getElementById("rathaus-cards");
+  const offices = state.rathausResults || [];
+  const coords = state.selectedCity
+    ? { lat: state.selectedCity.latitude, lng: state.selectedCity.longitude }
+    : { lat: 52.5074, lng: 13.3904 };
+  state.rathausUserCoords = coords;
+
+  _rathausMap = L.map(container, { zoomControl: true, scrollWheelZoom: false }).setView(
+    [coords.lat, coords.lng], 13
+  );
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 18,
+  }).addTo(_rathausMap);
+
+  // User location pin (blue circle)
+  L.circleMarker([coords.lat, coords.lng], {
+    radius: 9, fillColor: "#1a7a3c", color: "#fff", weight: 3, fillOpacity: 1,
+  }).addTo(_rathausMap).bindPopup(`<strong>${state.selectedCity?.name || "Berlin"}</strong>`);
+
+  offices.forEach((o, i) => {
+    if (o.latitude == null || o.longitude == null) return;
+    const icon = L.divIcon({
+      className: "",
+      html: `<div class="map-num-pin">${i + 1}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+    L.marker([o.latitude, o.longitude], { icon })
+      .addTo(_rathausMap)
+      .bindPopup(
+        `<strong>${o.name}</strong><br>${o.address || ""}<br><em>${o.distance_km ? o.distance_km.toFixed(1) + " km away" : o.city_name || ""}</em>`
+      );
+  });
+
+  const bounds = L.latLngBounds([
+    [coords.lat, coords.lng],
+    ...offices.filter((o) => o.latitude != null && o.longitude != null).slice(0, 3).map((o) => [o.latitude, o.longitude]),
+  ]);
+  _rathausMap.fitBounds(bounds, { padding: [32, 32] });
+
+  if (cardEl) cardEl.innerHTML = rathausCards(offices);
+}
+
+const emergencyContacts = [
+  {
+    type: "Mental health",
+    title: "Crisis first response",
+    org: "Berliner Krisendienst",
+    availability: "24/7 · Free",
+    tone: "red",
+    detail: "Immediate support if someone may harm themselves, feels unsafe, or needs urgent mental health help. You will speak to a trained responder.",
+    action_type: "call",
+    phones: [
+      { label: "Berliner Krisendienst", number: "tel:+4930390630" },
+      { label: "Telefonseelsorge (free)", number: "tel:+498001110111" },
+    ],
+  },
+  {
+    type: "Care and support",
+    title: "Care and support",
+    org: "Karibu community network",
+    availability: "< 2 hrs response",
+    tone: "green",
+    detail: "Speak with a trusted community leader for pastoral care, emergencies, grief and crisis support.",
+    action_type: "case",
+    case_type: "pastoral",
+    action: "Request callback",
+    contact_pref_prompt: true,
+  },
+  {
+    type: "Short stay",
+    title: "Emergency short-stay help",
+    org: "Karibu + Berlin shelter network",
+    availability: "Tonight",
+    tone: "gold",
+    detail: "Escalates to vetted community hosts and local shelter guidance for urgent temporary safe accommodation.",
+    action_type: "case+call",
+    case_type: "short_stay",
+    action: "Request safe stay",
+    phones: [
+      { label: "Berlin city services (115)", number: "tel:115" },
+    ],
+  },
+  {
+    type: "Embassy",
+    title: "Embassy support",
+    org: "Kenyan Embassy, Berlin",
+    availability: "Mon–Fri 09:00–12:30",
+    tone: "slate",
+    detail: "For lost passport, detention, family emergency, travel document, or urgent consular guidance.",
+    action_type: "case+call",
+    case_type: "embassy",
+    action: "Open Karibu case",
+    phones: [
+      { label: "Kenyan Embassy Berlin", number: "tel:+4930259266660" },
+    ],
+    url: { label: "kenyanembassyberlin.de ↗", href: "https://kenyanembassyberlin.de/" },
+  },
+  {
+    type: "Admin",
+    title: "Lost documents / urgent paperwork",
+    org: "Karibu Support desk",
+    availability: "Today",
+    tone: "green",
+    detail: "Karibu helps triage a police report, embassy contact, Bürgeramt steps, and translation support for lost or stolen documents.",
+    action_type: "case",
+    case_type: "admin",
+    action: "Open support case",
+  },
+];
+
+// ── Screen renderers ──────────────────────────────────────────
+
+function splash() {
+  return `<section class="phone-screen splash">
+    <div class="splash-mark">
+      <div class="brand-house"><span></span><span></span><span></span></div>
+      <h1>KARIBU</h1>
+      <h2>UJERUMANI</h2>
+      <p>Your trusted community for living, connecting, and thriving in Germany.</p>
+    </div>
+    <div class="cityline" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="splash-loader"><span></span></div>
+  </section>`;
+}
+
+function login() {
+  const err = state.authError ? `<p class="auth-error">${state.authError}</p>` : "";
+  return `<section class="phone-screen auth-screen">
+    <div class="auth-body">
+      <div class="auth-brand"><div class="brand-house small"><span></span><span></span><span></span></div><h1>Karibu<br>Ujerumani</h1></div>
+      <h2 class="auth-title">Welcome back</h2>
+      <p class="auth-sub">Sign in to your account</p>
+      ${err}
+      <form class="auth-form" id="login-form">
+        <label>Email<input type="email" name="email" placeholder="you@example.com" value="${state.authForm.email}" required /></label>
+        <label>Password<input type="password" name="password" placeholder="Your password" required /></label>
+        <button class="primary" type="submit">${state.loading ? icons.spinner + " Signing in…" : "Sign in"}</button>
+      </form>
+      <p class="auth-switch">Don't have an account? <button data-screen="${screens.register}">Register</button></p>
+    </div>
+    ${demoLayer()}
+  </section>`;
+}
+
+function register() {
+  const err = state.authError ? `<p class="auth-error">${state.authError}</p>` : "";
+  return `<section class="phone-screen auth-screen">
+    <div class="auth-body">
+      <div class="auth-brand"><div class="brand-house small"><span></span><span></span><span></span></div><h1>Karibu<br>Ujerumani</h1></div>
+      <h2 class="auth-title">Join the community</h2>
+      <p class="auth-sub">Create your free account</p>
+      ${err}
+      <form class="auth-form" id="register-form">
+        <label>Full name<input type="text" name="name" placeholder="Your full name" required /></label>
+        <label>Email<input type="email" name="email" placeholder="you@example.com" required /></label>
+        <label>Password<input type="password" name="password" placeholder="Choose a password (min 8 chars)" required /></label>
+        <button class="primary" type="submit">${state.loading ? icons.spinner + " Creating account…" : "Create account"}</button>
+      </form>
+      <p class="auth-switch">Already have an account? <button data-screen="${screens.login}">Sign in</button></p>
+    </div>
+    ${demoLayer()}
+  </section>`;
+}
+
+function listingCard(l) {
+  const saved = state.savedIds.has(l.id);
+  const photo = l.images?.[0];
+  return `<article class="listing-card" data-listing-id="${l.id}">
+    <div class="listing-image room-${l.theme}">
+      ${photo
+        ? `<button class="listing-photo-trigger" data-carousel-listing="${l.id}" aria-label="Open listing image carousel"><img src="${photo}" alt="${l.title}" /></button>`
+        : `<div class="room-scene"><i></i><i></i><i></i></div>`}
+      ${l.is_top_match ? `<span class="top-match">Top match</span>` : ""}
+      <button class="save ${saved ? "saved" : ""}" data-save-id="${l.id}" aria-label="Save listing">${icons.heart}</button>
+    </div>
+    <div class="listing-content">
+      <div class="price"><strong>€${l.price}</strong> / month</div>
+      <h3>${l.title}</h3>
+      <p>${l.transit_info || l.district} · ${l.district}</p>
+      <div class="chips"><span>Private Room</span><span>Wi‑Fi</span><span>Kitchen</span><b>${l.rating}</b></div>
+    </div>
+  </article>`;
+}
+
+function home() {
+  const firstName = state.user?.full_name?.split(" ")[0] || "there";
+  const topListings = state.listings.slice(0, 3);
+  const cityName = state.selectedCity?.name || "Berlin";
+  const tierCities = state.cities.filter((c) => c.is_tier_1 || c.is_tier_2).slice(0, 8);
+  const announcements = [
+    { icon: "📢", title: "Kenyan Business Directory", sub: "New listings added this week", tag: "New" },
+    { icon: "🤝", title: "Weekend Networking Event", sub: "Sat 14 Jun · Neukölln", tag: "Sat" },
+  ];
+  const cards = [
+    ["🏠", "Find Housing", "Rooms, apartments & short stays", screens.search],
+    ["✅", "Arrival Checklist", "Step-by-step guide for newcomers", screens.checklist],
+    ["👥", "Community", "Ask, share & get local tips", screens.community],
+    ["🏛️", "Rathaus Finder", "Find the right Bürgeramt nearby", screens.rathaus],
+    ["🛟", "Emergency Help", "Community support when it is urgent", screens.emergency],
+    ["❤️", "Saved Listings", "Your favorite places", screens.search],
+  ];
+  return `<section class="phone-screen home-screen">
+    <div class="screen-body">
+    <div class="home-head">
+      <div><h1>Karibu, ${firstName} 👋</h1><p>📍 ${state.locationStatus || cityName}</p></div>
+      <button class="bell" data-action="notifications">${icons.bell}</button>
+    </div>
+    <button class="city-pill" data-action="city-selector">🌍 ${cityName} <span>Change city</span></button>
+    <button class="ai-banner" data-screen="${screens.assistant}">
+      <div><h2>Need help today?</h2><p>Your AI concierge is ready.</p><b>Open Karibu Chat</b></div>
+      <span class="suitcase-ai" aria-hidden="true"><i></i></span>
+    </button>
+    <h2 class="section-title">Quick access</h2>
+    <div class="quick-grid">${cards.map(([e, t, s, sc]) => `<button class="quick-card" data-screen="${sc}"><span>${e}</span><strong>${t}</strong><small>${s}</small></button>`).join("")}</div>
+    <div class="section-row"><h2>Recommended for you</h2><button data-screen="${screens.search}">See all</button></div>
+    ${topListings.length
+      ? `<div class="mini-row">${topListings.map((l) => `<button class="mini-listing room-${l.theme}" data-listing-id="${l.id}"><span>€${l.price}/mo</span><b>${l.district}</b></button>`).join("")}</div>`
+      : `<div class="mini-row skeleton-row"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>`}
+    <div class="section-row" style="margin-top:22px"><h2>Explore Germany</h2><button data-action="city-selector">All cities</button></div>
+    <div class="city-strip">${tierCities.map((c) => `<button class="${state.selectedCity?.id === c.id ? "active" : ""}" data-city-id="${c.id}"><b>${c.name}</b><span>${c.state_abbreviation} · ${c.listing_count} listing${c.listing_count === 1 ? "" : "s"}</span></button>`).join("")}</div>
+    <div class="section-row" style="margin-top:22px"><h2>Announcements</h2><button data-action="see-all-announcements">View all</button></div>
+    <div class="announce-cards">${announcements.map((a) => `<button class="announce-card" data-action="open-announcement"><span class="announce-icon">${a.icon}</span><div><strong>${a.title}</strong><p>${a.sub}</p></div><b class="announce-tag">${a.tag}</b></button>`).join("")}</div>
+    <div class="section-row"><h2>Community Highlights</h2><button data-screen="${screens.community}">Join</button></div>
+    <div class="community-preview">
+      <button class="community-highlight" data-screen="${screens.community}"><b>Mercy W. · Neukölln</b><span>Best affordable supermarkets in Berlin?</span><footer>💬 18 replies · 3h ago</footer></button>
+      <button class="community-highlight" data-screen="${screens.community}"><b>Grace M. · Wedding</b><span>My 5 tips for getting Anmeldung done fast 🎉</span><footer>💬 24 replies · 1d ago</footer></button>
+    </div>
+    </div>
+    ${demoLayer()}
+    ${bottomNav()}
+  </section>`;
+}
+
+function search() {
+  const q = state.searchQuery.toLowerCase();
+  const filtered = q
+    ? state.listings.filter(
+        (l) =>
+          l.district.toLowerCase().includes(q) ||
+          l.title.toLowerCase().includes(q) ||
+          (l.address || "").toLowerCase().includes(q) ||
+          (l.transit_info || "").toLowerCase().includes(q)
+      )
+    : state.listings;
+
+  let items;
+  if (!state.listings.length) {
+    items = `<div class="loading-state">${icons.spinner} Loading listings…</div>`;
+  } else if (!filtered.length) {
+    items = `<div class="empty-state"><p>No listings match "<strong>${q}</strong>"</p><button class="secondary" data-action="clear-search">Clear search</button></div>`;
+  } else {
+    items = filtered.map((l) => listingCard(l)).join("");
+  }
+
+  return shell(
+    "Find Housing",
+    `<button class="city-selector-row" data-action="city-selector">
+      <span>Housing city</span><b>${state.selectedCity?.name || "Germany"}</b><small>${state.selectedCity?.state_name || "National search"}</small>
+    </button>
+    ${state.listingFallback ? `<div class="fallback-banner">No rooms yet in ${state.selectedCity?.name}. Showing national listings until the first local host lists a room.</div>` : ""}
+    <label class="searchbox">${icons.search}<input placeholder="Search area, district or landmark…" id="search-input" value="${state.searchQuery}" /></label>
+    <div class="filters">
+      <button data-action="filter-budget">Budget⌄</button>
+      <button data-action="filter-type">Type⌄</button>
+      <button data-action="filter-more">More⌄</button>
+    </div>
+    <div class="results-line"><span>${filtered.length} listing${filtered.length !== 1 ? "s" : ""} in ${state.listingFallback ? "Germany" : (state.selectedCity?.name || "Germany")}</span><button class="list-room-link" data-screen="${screens.listRoom}">+ List a room</button></div>
+    <div class="listing-stack">${items}</div>`,
+    { back: screens.home, right: iconButton("List a room", icons.plus, `data-screen="${screens.listRoom}"`) }
+  );
+}
+
+function listRoom() {
+  const themes = ["sun", "leaf", "city"];
+  const districts = ["Neukölln", "Wedding", "Mitte", "Prenzlauer Berg", "Charlottenburg", "Kreuzberg", "Friedrichshain", "Tempelhof", "Schöneberg", "Steglitz"];
+  const amenities = ["Anmeldung friendly", "Wi-Fi", "Kitchen", "Furnished", "Private room", "Heating", "Near U-Bahn", "Women-friendly", "No deposit", "Short stay"];
+  return shell(
+    "List Your Room",
+    `<p class="form-intro">Share your spare room in <strong>${state.selectedCity?.name || "Germany"}</strong> with the Karibu community. We'll verify it before it goes live.</p>
+    <form class="room-form" id="list-room-form">
+      <fieldset class="image-buckets">
+        <legend>Listing photos</legend>
+        <p>Upload up to 3 images. The main image opens a floating carousel with the support images.</p>
+        <label>Main image
+          <input type="file" name="main_image" accept="image/*" />
+        </label>
+        <label>Support image 1
+          <input type="file" name="support_image_1" accept="image/*" />
+        </label>
+        <label>Support image 2
+          <input type="file" name="support_image_2" accept="image/*" />
+        </label>
+      </fieldset>
+      <label>Room title <span class="req">*</span>
+        <input type="text" name="title" placeholder="e.g. Cozy room in Neukölln" required maxlength="80" />
+      </label>
+      <label>Monthly rent (€) <span class="req">*</span>
+        <input type="number" name="price" placeholder="e.g. 550" min="100" max="5000" required />
+      </label>
+      <label>District <span class="req">*</span>
+        <select name="district" required>
+          <option value="">— Select district —</option>
+          ${districts.map((d) => `<option value="${d}">${d}</option>`).join("")}
+        </select>
+      </label>
+      <label>Full address
+        <input type="text" name="address" placeholder="Street name and house number" />
+      </label>
+      <label>Nearest transport
+        <input type="text" name="transit_info" placeholder="e.g. 5 min to U8 Boddinstraße" />
+      </label>
+      <label>Room colour theme
+        <div class="theme-picker">${themes.map((t) => `<label class="theme-opt"><input type="radio" name="theme" value="${t}" ${t === "sun" ? "checked" : ""} /><span class="swatch room-${t}"></span><small>${t}</small></label>`).join("")}</div>
+      </label>
+      <label>Amenities
+        <select id="amenity-select">
+          <option value="">Select to add</option>
+          ${amenities.filter((a) => !state.listRoomAmenities.includes(a)).map((a) => `<option value="${a}">${a}</option>`).join("")}
+        </select>
+      </label>
+      <div class="amenity-picks">${state.listRoomAmenities.length
+        ? state.listRoomAmenities.map((a) => `<button type="button" data-amenity-remove="${a}">${a} ×</button>`).join("")
+        : `<span>No amenities added yet</span>`}
+      </div>
+      <label>Communication route
+        <select name="communication_route">
+          <option value="in_app">In-app messaging (recommended)</option>
+        </select>
+      </label>
+      <p class="route-note">Hosts and guests start with Karibu in-app messaging so phone numbers stay private until both sides choose to share them.</p>
+      <label>Description
+        <textarea name="description" rows="4" placeholder="Tell potential guests about the room, house rules, who you're looking for…" maxlength="500"></textarea>
+      </label>
+      <button class="primary" type="submit" ${state.listRoomLoading ? "disabled" : ""}>${state.listRoomLoading ? icons.spinner + " Submitting…" : "Submit listing"}</button>
+    </form>`,
+    { back: screens.search }
+  );
+}
+
+function detail() {
+  const l = state.detailListing || state.listings[0];
+  if (!l) return shell("", `<div class="loading-state">${icons.spinner}</div>`, { hideNav: true });
+  const saved = state.savedIds.has(l.id);
+  const isOwn = l.host_id === state.user?.id;
+  const photos = l.images || [];
+  return shell(
+    "",
+    `<div class="detail-hero room-${l.theme}">
+      ${photos.length
+        ? `<button class="detail-photo-trigger" data-carousel-listing="${l.id}" aria-label="Open listing image carousel"><img src="${photos[0]}" alt="${l.title}" /><span>${photos.length} photos</span></button>`
+        : `<div class="room-scene large"><i></i><i></i><i></i></div>`}
+      <button class="floating back" data-screen="${screens.search}">${icons.back}</button>
+      <div class="hero-actions">
+        <button data-save-id="${l.id}" class="${saved ? "saved" : ""}">${icons.heart}</button>
+        <button data-action="share-listing">↗</button>
+      </div>
+    </div>
+    <article class="detail-panel">
+      <div class="price-row">
+        <div class="price"><strong>€${l.price}</strong> / month</div>
+        <span class="rating-pill">${l.rating}</span>
+      </div>
+      <h1>${l.title}</h1>
+      <p class="detail-location">📍 ${l.address ? l.address + ", " : ""}${l.district}, Berlin</p>
+      ${l.transit_info ? `<p class="detail-transit">🚇 ${l.transit_info}</p>` : ""}
+      ${!isOwn ? `<span class="verified">✓ Community Verified</span>` : `<span class="verified own">Your listing</span>`}
+      <div class="amenities">
+        ${(l.amenities?.length ? l.amenities.slice(0, 5) : ["Private Room", "1 Guest", "Wi‑Fi", "Kitchen", "Heating"])
+          .map((a) => `<span>${amenityIcon(a)}<b>${a}</b></span>`).join("")}
+      </div>
+      <div class="comm-route"><b>Communication</b><span>In-app messaging first. Share WhatsApp or phone only after both sides agree.</span></div>
+      <h2>About the place</h2>
+      <p class="detail-desc">${l.description || "No description provided."}</p>
+      <div class="detail-map">
+        <div class="map-placeholder">📍 ${l.district} · Berlin</div>
+        <p class="map-note">Community verified area · Safe for Anmeldung</p>
+      </div>
+    </article>
+    <div class="cta-row">
+      ${isOwn
+        ? `<button class="secondary full-width" data-action="edit-listing">Edit listing</button>`
+        : `<button class="secondary" data-action="message-host">Message Host</button>
+           <button class="primary" data-book-id="${l.id}">Request to Book</button>`
+      }
+    </div>`,
+    { className: "detail", hideNav: true }
+  );
+}
+
+function amenityIcon(label) {
+  const key = label.toLowerCase();
+  if (key.includes("wi")) return "📶";
+  if (key.includes("kitchen")) return "🍳";
+  if (key.includes("heat")) return "♨️";
+  if (key.includes("u-bahn")) return "🚇";
+  if (key.includes("anmeldung")) return "✅";
+  if (key.includes("furnished")) return "🪑";
+  if (key.includes("short")) return "🧳";
+  if (key.includes("deposit")) return "💶";
+  if (key.includes("women")) return "🛡️";
+  if (key.includes("guest")) return "👤";
+  return "🛏️";
+}
+
+function assistant() {
+  const chips = [
+    "Where should I stay near TU Berlin?",
+    "What should I do after landing?",
+    "How do I register in Berlin?",
+    "What documents do I need?",
+    "Estimated monthly costs in Berlin",
+  ];
+  return shell(
+    "Karibu Chat",
+    `<div class="chat-intro">
+      <div class="chat-mark">💬</div>
+      <div><h2>Your AI concierge</h2><p>Ask about housing, Anmeldung, documents, costs, and settling in Germany.</p></div>
+    </div>
+    <div class="chat" id="chat-messages">${state.messages.map((m) => `<div class="bubble ${m.from}">${m.text.replace(/\n/g, "<br>")}</div>`).join("")}</div>
+    <div class="action-chips">${chips.map((c) => `<button data-chat="${c}">${c}</button>`).join("")}</div>
+    <form class="composer" id="chat-form"><input id="chat-input" placeholder="Ask anything about settling in Germany…" /><button type="submit">🎙</button></form>`,
+    { back: screens.home }
+  );
+}
+
+function checklist() {
+  const beforeArrival = ["Confirm University/Job Acceptance", "Apply for German Visa", "Book Temporary Accommodation", "Get Travel Insurance", "Research Berlin neighbourhoods"];
+  const week1 = ["Get a SIM Card", "Get Transport Card (BVG)", "Register Address (Anmeldung)", "Open a Bank Account", "Explore your neighbourhood"];
+  const week2 = ["Choose health insurance (Krankenkasse)", "Book Rathaus appointment", "Register with Kenyan Embassy", "Get a German number for official use"];
+  const settled = ["Join a community group", "Start German language classes", "Connect with a mentor on Karibu", "Help a new arrival — pay it forward 🤝"];
+  const all = [...beforeArrival, ...week1, ...week2, ...settled];
+  const pct = Math.round((state.checklistDone.size / all.length) * 100);
+
+  return shell(
+    "Arrival Checklist",
+    `<section class="progress-card">
+      <div><strong>Your progress</strong><span>${state.checklistDone.size} of ${all.length} completed</span></div>
+      <b>${pct}%</b>
+      <progress value="${pct}" max="100"></progress>
+    </section>
+    <h2 class="section-title">Before Arrival</h2>
+    <div class="task-list">${beforeArrival.map(taskRow).join("")}</div>
+    <h2 class="section-title">After Arrival — Week 1</h2>
+    <div class="task-list">${week1.map(taskRow).join("")}</div>
+    ${state.checklistExpanded ? `
+    <h2 class="section-title">Week 2</h2>
+    <div class="task-list">${week2.map(taskRow).join("")}</div>
+    <h2 class="section-title settled-title">Settled 🎉</h2>
+    <div class="task-list">${settled.map(taskRow).join("")}</div>
+    ` : ""}
+    <button class="show-more" data-action="toggle-checklist">${state.checklistExpanded ? "Show less ▲" : "Show Week 2 & Settled ▼"}</button>`,
+    { back: screens.home }
+  );
+}
+
+function taskRow(task) {
+  const done = state.checklistDone.has(task);
+  return `<button class="task ${done ? "done" : ""}" data-task="${task}"><span>${done ? "✓" : ""}</span>${task}<b>${done ? "" : "⌄"}</b></button>`;
+}
+
+function community() {
+  const tabs = ["For You", "Questions", "Tips", "Events"];
+
+  let content = "";
+  if (state.communityTab === "Events") {
+    if (!state.events.length) {
+      content = `<div class="loading-state">${icons.spinner} Loading events…</div>`;
+    } else {
+      content = `<div class="event-stack">${state.events.map((e) => `<article class="event-card">
+        <div class="event-header"><span class="event-tag">${e.tag}</span><span class="event-rsvp">👥 ${e.rsvp_count} going</span></div>
+        <h2>${e.title}</h2>
+        <p>📅 ${e.date_str}</p>
+        <p>📍 ${e.location}</p>
+        <button class="primary event-btn" data-rsvp-id="${e.id}">RSVP to attend</button>
+      </article>`).join("")}</div>`;
+    }
+  } else {
+    if (!state.communityPosts.length) {
+      content = `<div class="loading-state">${icons.spinner} Loading posts…</div>`;
+    } else {
+      content = `<div class="post-stack">${state.communityPosts.map((p) => `<article class="post" data-post-id="${p.id}">
+        <header><b>${p.author_name}</b><span>${p.author_area} · ${timeAgo(p.created_at)}</span><button data-action="post-menu">•••</button></header>
+        <h2>${p.body}</h2>
+        <footer>
+          <button data-like-id="${p.id}">♡ ${p.likes}</button>
+          <button data-action="comment-post">💬 ${p.comments}</button>
+          <button data-action="share-post">Share</button>
+        </footer>
+      </article>`).join("")}</div>`;
+    }
+  }
+
+  return shell(
+    "Community",
+    `<div class="tabs">${tabs.map((t) => `<button class="${state.communityTab === t ? "active" : ""}" data-community-tab="${t}">${t}</button>`).join("")}</div>
+    ${content}
+    <button class="fab" data-action="compose-post">${icons.plus}</button>`,
+    { right: iconButton("Sort", "☷", `data-action="community-sort"`) }
+  );
+}
+
+function timeAgo(iso) {
+  const d = new Date(iso);
+  const diff = (Date.now() - d) / 1000;
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+function messages() {
+  const rows = state.conversations.length
+    ? state.conversations.map((c) => `<button class="message-row"><span class="avatar">${c.name[0].toUpperCase()}</span><div><b>${c.name}</b><p>${c.body}</p></div><time>${c.time}</time>${c.unread_count ? `<em>${c.unread_count}</em>` : ""}</button>`).join("")
+    : `<div class="loading-state">${icons.spinner} Loading messages…</div>`;
+  return shell(
+    "Messages",
+    `<label class="searchbox small">${icons.search}<input placeholder="Search messages" /></label>
+    <div class="message-list">${rows}</div>`,
+    { right: iconButton("More", "⋮", `data-action="message-more"`) }
+  );
+}
+
+function bookings() {
+  const tabs = ["Upcoming", "Current", "Past"];
+  let content = "";
+  if (!state.bookings.length) {
+    content = `<div class="empty-state"><p>No bookings yet.</p><button class="primary" data-screen="${screens.search}">Find Housing</button></div>`;
+  } else {
+    content = `<div class="booking-stack">${state.bookings.map((b) => `<article class="booking">
+      <div class="booking-visual room-${b.listing_theme}"><div class="room-scene tiny"><i></i><i></i><i></i></div></div>
+      <div>
+        <h2>${b.listing_title}</h2>
+        <p>${b.start_date} – ${b.end_date}</p>
+        <b>€${b.price} / month</b>
+        <span class="${b.status}">${b.status.charAt(0).toUpperCase() + b.status.slice(1)}</span>
+      </div>
+      <footer><button data-action="booking-details">View Details</button><button data-action="contact-host">Contact Host</button></footer>
+    </article>`).join("")}</div>`;
+  }
+  return shell(
+    "My Bookings",
+    `<div class="tabs">${tabs.map((t) => `<button class="${state.bookingsTab === t ? "active" : ""}" data-bookings-tab="${t}">${t}</button>`).join("")}</div>
+    ${content}`,
+    { right: iconButton("Filter", "☷", `data-action="booking-filter"`) }
+  );
+}
+
+function profile() {
+  const u = state.user || {};
+  const firstName = u.full_name?.split(" ")[0] || "";
+  const initials = u.full_name?.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
+  return shell(
+    "",
+    `<header class="profile-hero">
+      <button class="profile-photo" data-action="profile-photo">${initials}</button>
+      <h1>${u.full_name || "—"}</h1>
+      <p>${u.location || "Berlin, Germany"}</p>
+      <span>${u.is_verified ? "✓ Verified" : "Unverified"}</span>
+    </header>
+    <div class="stats">
+      <button data-action="saved-listings">${state.savedIds.size}<span>Saved</span></button>
+      <button data-screen="${screens.bookings}">${state.bookings.length}<span>Bookings</span></button>
+      <button data-action="reviews">0<span>Reviews</span></button>
+    </div>
+    <div class="menu-list">${["Edit Profile", "Verification", "Payment Methods", "Saved Searches", "Settings", "Help & Support"].map((item) => `<button data-profile="${item}"><span>${profileItemIcon(item)}</span>${item}<b>›</b></button>`).join("")}</div>
+    <h2 class="section-title profile-section-title">Recent Activity</h2>
+    <div class="activity-list">
+      <div class="activity-row"><span class="activity-icon">💬</span><div><b>Answered a community question</b><p>2 days ago</p></div></div>
+      <div class="activity-row"><span class="activity-icon">❤️</span><div><b>Saved ${state.savedIds.size} listing${state.savedIds.size !== 1 ? "s" : ""}</b><p>This week</p></div></div>
+      <div class="activity-row"><span class="activity-icon">✅</span><div><b>${state.checklistDone.size} checklist tasks completed</b><p>Since joining</p></div></div>
+    </div>
+    <h2 class="section-title profile-section-title">Contributions</h2>
+    <div class="contrib-grid">
+      <div class="contrib-card"><b>5</b><span>Tips shared</span></div>
+      <div class="contrib-card"><b>12</b><span>Answers given</span></div>
+      <div class="contrib-card"><b>34</b><span>Helpful votes</span></div>
+    </div>
+    <button class="logout-btn" data-action="logout">Sign out</button>`
+  );
+}
+
+function profileItemIcon(item) {
+  return { "Edit Profile": "♙", Verification: "✓", "Payment Methods": "▣", "Saved Searches": "⌕", Settings: "⚙", "Help & Support": "☼" }[item];
+}
+
+function rathausCards(offices) {
+  if (!offices.length) return `<div class="empty-state"><p>No offices loaded for ${state.selectedCity?.name || "this city"} yet.</p><button class="primary" data-action="city-selector">Choose another city</button></div>`;
+  return offices.map((o, i) => `<article class="authority-card" id="office-card-${i}">
+    <div class="office-num">${i + 1}</div>
+    <div class="office-body">
+      <h2>${o.name}</h2>
+      <p class="office-addr">📍 ${o.address || o.city_name || "Germany"}</p>
+      <div class="office-meta">
+        <span class="dist-pill">${o.office_type === "auslaenderbehorde" ? "Visa / residence" : "Registration"}</span>
+        ${o.distance_km ? `<span>🚶 ${o.distance_km.toFixed(1)} km</span>` : ""}
+        ${o.phone ? `<span>📞 ${o.phone}</span>` : ""}
+      </div>
+      <div class="chips"><span>${o.city_name || state.selectedCity?.name || "City"}</span><span>${o.state_abbreviation || ""}</span>${o.is_verified ? "<b>Verified</b>" : ""}</div>
+      <div class="office-cta">
+        <a class="secondary mini-cta" href="${o.appointment_url || o.website || "https://www.115.de/"}" target="_blank" rel="noopener">Book appointment ↗</a>
+        <a class="directions-link" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.address || o.city_name || state.selectedCity?.name || "Germany")}" target="_blank" rel="noopener">Directions ↗</a>
+      </div>
+    </div>
+  </article>`).join("");
+}
+
+function rathaus() {
+  return shell(
+    "Rathaus Finder",
+    `<button class="city-selector-row" data-action="city-selector">
+      <span>Official-services city</span><b>${state.selectedCity?.name || "Berlin"}</b><small>${state.selectedCity?.state_name || "Germany"}</small>
+    </button>
+    <div id="rathaus-map" class="leaflet-map-container"></div>
+    <div id="rathaus-cards" class="authority-list">
+      ${state.rathausResults.length ? rathausCards(state.rathausResults) : `<div class="loading-state">${icons.spinner} Loading nearby offices…</div>`}
+    </div>`,
+    { back: screens.home, right: iconButton("Emergency help", icons.shield, `data-screen="${screens.emergency}"`) }
+  );
+}
+
+function emergencyCardActions(c) {
+  const parts = [];
+
+  if (c.phones) {
+    c.phones.forEach((p) => {
+      parts.push(`<a class="sc-call" href="${p.number}">📞 ${p.label}</a>`);
+    });
+  }
+  if (c.url) {
+    parts.push(`<a class="sc-link" href="${c.url.href}" target="_blank" rel="noopener">${c.url.label}</a>`);
+  }
+  if (c.action_type === "case" || c.action_type === "case+call") {
+    parts.push(`<button class="primary sc-case-btn" data-case-type="${c.case_type}"${c.contact_pref_prompt ? ' data-ask-pref="true"' : ""}>${c.action}</button>`);
+  }
+
+  return `<div class="sc-actions">${parts.join("")}</div>`;
+}
+
+function emergency() {
+  const tabs = ["All", "Poison", "Mental health", "Embassy", "Immigrant support", "Care"];
+  const services = [
+    ...(state.emergencyData?.national || []),
+    ...(state.emergencyData?.state_specific || []),
+  ];
+  const cards = [
+    ...services.map((s) => ({
+      kind: "service",
+      type: serviceTypeLabel(s.category),
+      title: s.name,
+      org: s.scope === "national" ? "Germany-wide" : (state.emergencyData?.state_name || state.selectedCity?.state_name || "Regional"),
+      availability: s.available_24h ? "24/7" : "Office hours",
+      tone: serviceTone(s.category),
+      detail: s.description,
+      phone: s.phone,
+      category: s.category,
+      languages: s.languages,
+    })),
+    {
+      kind: "case",
+      type: "Care",
+      title: "Care and support",
+      org: "Karibu community network",
+      availability: "< 2 hrs response",
+      tone: "green",
+      detail: "Speak with a trusted community leader for pastoral care, emergencies, grief and crisis support.",
+      category: "care",
+      case_type: "pastoral",
+    },
+  ];
+  const contacts = state.emergencyType === "All"
+    ? cards
+    : cards.filter((c) => c.type === state.emergencyType);
+
+  return shell(
+    "Emergency Help",
+    `<div class="urgent-panel">
+      <div class="urgent-numbers">
+        <a class="urgent-num red" href="tel:110"><span>110</span><small>Police</small></a>
+        <a class="urgent-num red" href="tel:112"><span>112</span><small>Ambulance</small></a>
+        <a class="urgent-num green" href="tel:115"><span>115</span><small>City services</small></a>
+      </div>
+      <p>Call emergency services first if there is immediate danger. Numbers are cached for offline use.</p>
+    </div>
+    <button class="city-selector-row" data-action="city-selector">
+      <span>Emergency region</span><b>${state.selectedCity?.name || "Germany"}</b><small>${state.emergencyData?.state_name || state.selectedCity?.state_name || "National numbers"}</small>
+    </button>
+    <div class="support-tabs">${tabs.map((t) => `<button class="${state.emergencyType === t ? "active" : ""}" data-emergency-type="${t}">${t}</button>`).join("")}</div>
+    <div class="support-list">${contacts.map((c) => `<article class="support-card ${c.tone}">
+      <div class="sc-header">
+        <span class="sc-tag ${c.tone}">${c.type}</span>
+        <span class="sc-avail">${c.availability}</span>
+      </div>
+      <h2>${c.title}</h2>
+      <p class="sc-detail">${c.detail}</p>
+      <p class="sc-org">— ${c.org}</p>
+      ${c.kind === "case"
+        ? `<div class="sc-actions"><button class="primary sc-case-btn" data-case-type="${c.case_type}" data-ask-pref="true">Request callback</button></div>`
+        : `<div class="sc-actions"><a class="sc-call" href="tel:${c.phone}">📞 ${c.phone}</a><span class="sc-link">${c.languages || "German"}</span></div>`}
+    </article>`).join("")}</div>`,
+    { back: screens.home, right: iconButton("Rathaus finder", icons.map, `data-screen="${screens.rathaus}"`) }
+  );
+}
+
+function serviceTypeLabel(category) {
+  return {
+    police: "Police",
+    fire: "Fire",
+    ambulance: "Ambulance",
+    poison: "Poison",
+    mental_health: "Mental health",
+    embassy: "Embassy",
+    immigrant_support: "Immigrant support",
+  }[category] || "Other";
+}
+
+function serviceTone(category) {
+  return {
+    police: "red",
+    fire: "red",
+    ambulance: "red",
+    poison: "gold",
+    mental_health: "green",
+    embassy: "slate",
+    immigrant_support: "green",
+  }[category] || "slate";
+}
+
+// ── Render ────────────────────────────────────────────────────
+function render() {
+  // Always destroy Leaflet map before replacing DOM; initRathausMap re-creates it
+  if (_rathausMap) { _rathausMap.remove(); _rathausMap = null; }
+  const screenMap = { splash, login, register, home, search, detail, listRoom, assistant, checklist, community, messages, bookings, profile, rathaus, emergency };
+  app.innerHTML = screenMap[state.screen]?.() ?? "";
+  if (state.screen === screens.rathaus) requestAnimationFrame(initRathausMap);
+}
+
+// ── Event Delegation ──────────────────────────────────────────
+app.addEventListener("click", (e) => {
+  const screenBtn = e.target.closest("[data-screen]");
+  const actionBtn = e.target.closest("[data-action]");
+  const saveBtn = e.target.closest("[data-save-id]");
+  const listingBtn = e.target.closest("[data-listing-id]");
+  const taskBtn = e.target.closest("[data-task]");
+  const chatBtn = e.target.closest("[data-chat]");
+  const communityTabBtn = e.target.closest("[data-community-tab]");
+  const bookingsTabBtn = e.target.closest("[data-bookings-tab]");
+  const emergencyTypeBtn = e.target.closest("[data-emergency-type]");
+  const likeBtn = e.target.closest("[data-like-id]");
+  const rsvpBtn = e.target.closest("[data-rsvp-id]");
+  const bookBtn = e.target.closest("[data-book-id]");
+  const profileBtn = e.target.closest("[data-profile]");
+  const officeBtn = e.target.closest("[data-office]");
+  const caseBtn = e.target.closest("[data-case-type]");
+  const carouselBtn = e.target.closest("[data-carousel-listing]");
+  const amenityRemoveBtn = e.target.closest("[data-amenity-remove]");
+  const cityBtn = e.target.closest("[data-city-id]");
+
+  const prefBtn = e.target.closest("[data-pref]");
+  if (prefBtn && state.sheet?._pendingCase) {
+    const caseType = state.sheet._pendingCase;
+    const pref = prefBtn.dataset.pref;
+    state.sheet = null;
+    submitEmergencyCase(caseType, pref);
+    return;
+  }
+  if (amenityRemoveBtn) {
+    state.listRoomAmenities = state.listRoomAmenities.filter((a) => a !== amenityRemoveBtn.dataset.amenityRemove);
+    updateAmenityPickerDom();
+    return;
+  }
+  if (carouselBtn) { openCarousel(parseInt(carouselBtn.dataset.carouselListing, 10)); return; }
+  if (cityBtn) { selectCity(parseInt(cityBtn.dataset.cityId, 10)); return; }
+  if (actionBtn && (!actionBtn.classList.contains("demo-backdrop") || e.target === actionBtn)) {
+    handleAction(actionBtn.dataset.action);
+    return;
+  }
+  if (saveBtn) { handleSave(parseInt(saveBtn.dataset.saveId)); return; }
+  if (bookBtn) { handleBook(parseInt(bookBtn.dataset.bookId)); return; }
+  if (likeBtn) { handleLike(parseInt(likeBtn.dataset.likeId)); return; }
+  if (rsvpBtn) { handleRsvp(parseInt(rsvpBtn.dataset.rsvpId)); return; }
+  if (caseBtn) { handleEmergencyCase(caseBtn.dataset.caseType, caseBtn.dataset.askPref === "true"); return; }
+  if (listingBtn && !saveBtn) { handleOpenListing(parseInt(listingBtn.dataset.listingId)); return; }
+  if (taskBtn) { handleTask(taskBtn.dataset.task); return; }
+  if (chatBtn) { handleChat(chatBtn.dataset.chat); return; }
+  if (communityTabBtn) { state.communityTab = communityTabBtn.dataset.communityTab; render(); loadCommunity(state.communityTab); return; }
+  if (bookingsTabBtn) { state.bookingsTab = bookingsTabBtn.dataset.bookingsTab; render(); return; }
+  if (emergencyTypeBtn) { state.emergencyType = emergencyTypeBtn.dataset.emergencyType; render(); return; }
+  if (profileBtn) { openSheet(profileBtn.dataset.profile, profileSheet(profileBtn.dataset.profile), "Close"); return; }
+  if (officeBtn) { openSheet("Authority details", `<p class="sheet-copy">${officeBtn.dataset.office} — appointment booking, registration and address services.</p>`, "Use this office"); return; }
+  if (screenBtn) { setScreen(screenBtn.dataset.screen); return; }
+});
+
+async function handleSave(id) {
+  try {
+    const res = await api.listings.toggleSave(id);
+    if (res.saved) {
+      state.savedIds.add(id);
+      showToast("Saved to favorites");
+    } else {
+      state.savedIds.delete(id);
+      showToast("Removed from saved");
+    }
+    render();
+  } catch { showToast("Could not save listing"); }
+}
+
+function handleOpenListing(id) {
+  state.detailListing = state.listings.find((l) => l.id === id) || null;
+  setScreen(screens.detail);
+}
+
+function openCarousel(id) {
+  const listing = state.listings.find((l) => l.id === id) || state.detailListing;
+  const images = listing?.images || [];
+  if (!images.length) return;
+  state.carousel = { images, index: 0 };
+  render();
+}
+
+function selectCity(id) {
+  const city = state.cities.find((c) => c.id === id);
+  if (!city) return;
+  state.selectedCity = city;
+  state.locationStatus = `${city.name}, ${city.state_abbreviation}`;
+  state.sheet = null;
+  localStorage.setItem("karibu_city_id", String(city.id));
+  render();
+  loadListings();
+  if (state.screen === screens.rathaus) loadRathaus();
+  if (state.screen === screens.emergency) loadEmergency();
+}
+
+function citySelectorSheet() {
+  const tier1 = state.cities.filter((c) => c.is_tier_1);
+  const other = state.cities.filter((c) => !c.is_tier_1);
+  const cityButton = (c) => `<button class="${state.selectedCity?.id === c.id ? "active" : ""}" data-city-id="${c.id}">
+    <b>${c.name}</b><span>${c.state_name || c.state_abbreviation} · ${c.listing_count} listing${c.listing_count === 1 ? "" : "s"}</span>
+  </button>`;
+  return `<div class="city-picker">
+    <p class="sheet-copy">Choose the city for housing, Rathaus Finder, and emergency support. Cities with no rooms still show official-service coverage.</p>
+    <h3>Core cities</h3>
+    <div class="city-picker-grid">${tier1.map(cityButton).join("")}</div>
+    <h3>Explore Germany</h3>
+    <div class="city-picker-grid">${other.map(cityButton).join("")}</div>
+  </div>`;
+}
+
+async function handleTask(key) {
+  const wasDone = state.checklistDone.has(key);
+  wasDone ? state.checklistDone.delete(key) : state.checklistDone.add(key);
+  render();
+  try {
+    await api.checklist.toggle(key);
+  } catch {
+    wasDone ? state.checklistDone.add(key) : state.checklistDone.delete(key);
+    render();
+    showToast("Could not save progress");
+  }
+}
+
+async function handleChat(text) {
+  state.messages.push({ from: "user", text });
+  state.messages.push({ from: "bot", text: "…" });
+  render();
+  scrollChat();
+  try {
+    const history = state.messages.slice(0, -2).map((m) => ({ role: m.from === "user" ? "user" : "assistant", content: m.text }));
+    const res = await api.ai.chat(text, history);
+    state.messages[state.messages.length - 1] = { from: "bot", text: res.reply };
+    render();
+    scrollChat();
+  } catch (e) {
+    state.messages[state.messages.length - 1] = { from: "bot", text: "Sorry, I couldn't reach the AI right now. Please try again." };
+    render();
+  }
+}
+
+async function handleLike(id) {
+  try {
+    const res = await api.community.like(id);
+    const post = state.communityPosts.find((p) => p.id === id);
+    if (post) { post.likes = res.likes; render(); }
+  } catch { showToast("Could not like post"); }
+}
+
+async function handleRsvp(id) {
+  try {
+    const res = await api.community.rsvp(id);
+    openSheet("RSVP confirmed! 🎉", `<p class="sheet-copy">You're going to <strong>${res.title}</strong>. Joining details will be sent to your Karibu inbox.</p><div class="demo-reply">See you there!</div>`, "Done");
+    const ev = state.events.find((e) => e.id === id);
+    if (ev) { ev.rsvp_count = res.rsvp_count; render(); }
+  } catch { showToast("Could not RSVP"); }
+}
+
+async function handleBook(listingId) {
+  const l = state.detailListing || state.listings.find((x) => x.id === listingId);
+  if (!l) return;
+  try {
+    const booking = await api.bookings.create({ listing_id: listingId, start_date: "1 Jul 2024", end_date: "31 Jul 2024" });
+    state.bookings.unshift(booking);
+    openSheet("Booking request sent!", `<p class="sheet-copy"><strong>${l.title}</strong> has been requested. Check your bookings for status updates.</p><div class="case-number">Booking #${booking.id}</div>`, "View bookings");
+    state.sheet._onClose = () => setScreen(screens.bookings);
+  } catch (e) { showToast(e.message); }
+}
+
+const CASE_LABELS = {
+  pastoral: "Care and support request",
+  short_stay: "Emergency short-stay",
+  embassy: "Embassy support",
+  admin: "Lost documents / urgent paperwork",
+  mental_health: "Mental health support",
+};
+
+const CONTACT_PREF_SHEET = `
+  <p class="sheet-copy" style="margin-bottom:14px">How would you like to be contacted by the responder?</p>
+  <div class="pref-options">
+    <button class="pref-opt" data-pref="phone">📞 Phone call</button>
+    <button class="pref-opt" data-pref="whatsapp">💬 WhatsApp</button>
+    <button class="pref-opt" data-pref="in_person">🤝 In person</button>
+  </div>`;
+
+async function handleEmergencyCase(caseType, askPref = false) {
+  if (askPref) {
+    // Show contact preference sheet first, then submit on selection
+    openSheet(CASE_LABELS[caseType] || "Support request", CONTACT_PREF_SHEET, "Skip — submit now");
+    state.sheet._pendingCase = caseType;
+    state.sheet._onClose = () => submitEmergencyCase(caseType, null);
+    return;
+  }
+  await submitEmergencyCase(caseType, null);
+}
+
+async function submitEmergencyCase(caseType, contactPref) {
+  try {
+    const res = await api.support.createCase(caseType, null, contactPref);
+    const label = CASE_LABELS[caseType] || "Support case";
+    openSheet(
+      "Case opened ✓",
+      `<p class="sheet-copy">Your <strong>${label}</strong> has been logged. A Karibu responder will reach out ${contactPref ? "via " + contactPref : "shortly"}.</p>
+      <div class="case-number">${res.case_ref}</div>
+      <p class="sheet-copy" style="margin-top:12px;font-size:12px">Keep this reference number. You can track the case in your messages.</p>`,
+      "Done"
+    );
+  } catch (e) {
+    showToast(e.message || "Could not open case");
+  }
+}
+
+function scrollChat() {
+  const el = document.getElementById("chat-messages");
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
+function handleAction(action) {
+  if (action === "close-sheet") {
+    const onClose = state.sheet?._onClose;
+    state.sheet = null;
+    if (onClose) { onClose(); return; }
+    render();
+    return;
+  }
+  if (action === "clear-search") { state.searchQuery = ""; render(); return; }
+  if (action === "city-selector") { openSheet("Choose city", citySelectorSheet(), "Close"); return; }
+  if (action === "close-carousel") { state.carousel = null; render(); return; }
+  if (action === "carousel-prev" && state.carousel) {
+    state.carousel.index = (state.carousel.index - 1 + state.carousel.images.length) % state.carousel.images.length;
+    render();
+    return;
+  }
+  if (action === "carousel-next" && state.carousel) {
+    state.carousel.index = (state.carousel.index + 1) % state.carousel.images.length;
+    render();
+    return;
+  }
+  if (action === "edit-listing") { openSheet("Edit listing", `<p class="sheet-copy">Listing editing coming soon — contact Karibu Support to update your listing details.</p>`, "Got it"); return; }
+  if (action === "toggle-checklist") { state.checklistExpanded = !state.checklistExpanded; render(); return; }
+  if (action === "logout") {
+    clearToken();
+    state.user = null;
+    state.listings = [];
+    state.savedIds = new Set();
+    state.checklistDone = new Set();
+    state.bookings = [];
+    state.conversations = [];
+    setScreen(screens.login);
+    return;
+  }
+
+  const sheets = {
+    notifications: ["Notifications", "Mary replied about the room. Your Rathaus checklist has a suggested appointment slot."],
+    "filter-budget": ["Budget filter", "Filtering: up to €700/month."],
+    "filter-type": ["Type filter", "Private room or verified short stay."],
+    "filter-more": ["More filters", "Verified hosts, near U-Bahn, Anmeldung friendly, Wi-Fi, and furnished."],
+    "share-listing": ["Share listing", "Shareable link ready for WhatsApp or Messages."],
+    "message-host": ["Message Host", "In-app conversation opened with a prefilled intro and arrival dates. WhatsApp or phone sharing happens only if both sides choose it."],
+    "post-menu": ["Post options", "Save, report, mute topic, or follow this neighbourhood."],
+    "comment-post": ["Comments", "Full thread with community replies and mentor answers."],
+    "share-post": ["Share post", "Community post link copied."],
+    "compose-post": ["Create post", "Composer ready: ask a question, share a tip, or post an event."],
+    "community-sort": ["Community sorting", "Sort by most helpful, newest, or nearby members."],
+    "message-more": ["Inbox actions", "Mark all read, start support chat, or filter threads."],
+    "booking-details": ["Booking details", "Full dates, host contact, check-in notes, and payment status."],
+    "contact-host": ["Contact Host", "Host conversation opened with booking context."],
+    "booking-filter": ["Booking filters", "Filter by status: Upcoming, Confirmed, Pending, Past."],
+    "profile-photo": ["Profile photo", "Upload a profile photo and manage verification badge."],
+    "saved-listings": ["Saved listings", `You have ${state.savedIds.size} saved listing(s).`],
+    reviews: ["Reviews", "Community trust score, host reviews, and guest feedback."],
+    "service-chip": ["Service selected", "This office handles this registration service."],
+    "open-announcement": ["Community Announcements", "New Kenyan Business Directory is live! Browse vetted businesses run by Kenyans in Berlin. Weekend Networking Event: Sat 14 Jun, Neukölln Community Center, 6 PM."],
+    "see-all-announcements": ["All Announcements", "Kenyan Business Directory launch, Weekend Networking (Sat 14 Jun), Anmeldung Help Session (Sun 15 Jun), mentor matching feature launching soon."],
+  };
+
+  const s = sheets[action];
+  if (s) openSheet(s[0], `<p class="sheet-copy">${s[1]}</p>`, "Got it");
+}
+
+function profileSheet(item) {
+  const copy = {
+    "Edit Profile": "Edit name, city, arrival date, languages, and community visibility.",
+    Verification: "Upload ID, add phone/email verification, and request community verification.",
+    "Payment Methods": "Manage payment preferences for booking deposits.",
+    "Saved Searches": "Your saved filters for Neukölln, Wedding, budget under €700.",
+    Settings: "Notification preferences, privacy, language, and account security.",
+    "Help & Support": "Start a Karibu Support case or browse FAQs.",
+  };
+  return `<p class="sheet-copy">${copy[item] || ""}</p>`;
+}
+
+// ── Form Submissions ──────────────────────────────────────────
+app.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  // Login form
+  if (e.target.id === "login-form") {
+    const fd = new FormData(e.target);
+    doLogin(fd.get("email"), fd.get("password"));
+    return;
+  }
+
+  // Register form
+  if (e.target.id === "register-form") {
+    const fd = new FormData(e.target);
+    doRegister(fd.get("email"), fd.get("password"), fd.get("name"));
+    return;
+  }
+
+  // Rathaus form
+  if (e.target.closest("[data-rathaus-form]")) {
+    const fd = new FormData(e.target);
+    state.rathausQuery = { address: fd.get("address") || "", postcode: fd.get("postcode") || "" };
+    loadRathaus();
+    return;
+  }
+
+  // AI chat form
+  if (e.target.id === "chat-form") {
+    const input = document.getElementById("chat-input");
+    const text = input?.value.trim();
+    if (text) { handleChat(text); if (input) input.value = ""; }
+    return;
+  }
+
+  // List-a-room form
+  if (e.target.id === "list-room-form") {
+    const fd = new FormData(e.target);
+    const images = await readListingImages(e.target);
+    doListRoom({
+      title: fd.get("title"),
+      price: parseInt(fd.get("price"), 10),
+      district: fd.get("district"),
+      city_id: state.selectedCity?.id,
+      state_id: state.selectedCity?.state_id,
+      address: fd.get("address") || undefined,
+      transit_info: fd.get("transit_info") || undefined,
+      description: fd.get("description") || undefined,
+      theme: fd.get("theme") || "sun",
+      images,
+      amenities: [...state.listRoomAmenities],
+      communication_route: fd.get("communication_route") || "in_app",
+    });
+    return;
+  }
+});
+
+// ── Search input (live filter) ────────────────────────────────
+app.addEventListener("input", (e) => {
+  if (e.target.id === "search-input") {
+    state.searchQuery = e.target.value;
+    render();
+  }
+});
+
+app.addEventListener("change", (e) => {
+  if (e.target.id === "amenity-select" && e.target.value) {
+    if (!state.listRoomAmenities.includes(e.target.value)) {
+      state.listRoomAmenities = [...state.listRoomAmenities, e.target.value];
+    }
+    updateAmenityPickerDom();
+  }
+});
+
+function updateAmenityPickerDom() {
+  const allAmenities = ["Anmeldung friendly", "Wi-Fi", "Kitchen", "Furnished", "Private room", "Heating", "Near U-Bahn", "Women-friendly", "No deposit", "Short stay"];
+  const picks = document.querySelector(".amenity-picks");
+  const select = document.getElementById("amenity-select");
+  if (picks) {
+    picks.innerHTML = state.listRoomAmenities.length
+      ? state.listRoomAmenities.map((a) => `<button type="button" data-amenity-remove="${a}">${a} ×</button>`).join("")
+      : `<span>No amenities added yet</span>`;
+  }
+  if (select) {
+    select.innerHTML = `<option value="">Select to add</option>` +
+      allAmenities
+        .filter((a) => !state.listRoomAmenities.includes(a))
+        .map((a) => `<option value="${a}">${a}</option>`)
+        .join("");
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readListingImages(form) {
+  const fields = ["main_image", "support_image_1", "support_image_2"];
+  const files = fields
+    .map((name) => form.elements[name]?.files?.[0])
+    .filter(Boolean)
+    .slice(0, 3);
+  return Promise.all(files.map(readFileAsDataUrl));
+}
+
+async function doListRoom(data) {
+  state.listRoomLoading = true;
+  render();
+  try {
+    const { images, amenities, communication_route, ...listingData } = data;
+    const listing = await api.listings.create(listingData);
+    const enrichedListing = { ...listing, images, amenities, communication_route };
+    state.listings = [enrichedListing, ...state.listings];
+    if (state.selectedCity) {
+      state.selectedCity = { ...state.selectedCity, listing_count: (state.selectedCity.listing_count || 0) + 1 };
+      state.cities = state.cities.map((c) => c.id === state.selectedCity.id ? state.selectedCity : c);
+      state.listingFallback = false;
+    }
+    state.listRoomLoading = false;
+    state.listRoomAmenities = [];
+    openSheet(
+      "Listing submitted! 🎉",
+      `<p class="sheet-copy">Your room <strong>${enrichedListing.title}</strong> has been submitted for community verification. It will appear in search results once approved.</p>
+      <div class="case-number">Listing #${listing.id}</div>`,
+      "View listing"
+    );
+    // Navigate to the new listing on sheet close
+    state.sheet._onClose = () => { state.detailListing = enrichedListing; setScreen(screens.detail); };
+  } catch (e) {
+    state.listRoomLoading = false;
+    render();
+    showToast(e.message || "Could not submit listing");
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────
+registerServiceWorker();
+render();
+setTimeout(initAuth, 1800);

@@ -1,0 +1,37 @@
+{
+  "name": "Karibu Ujerumani",
+  "short_name": "Karibu",
+  "description": "Housing, official services, emergency support, and community guidance for settling in Germany.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#1a7a3c",
+  "orientation": "portrait",
+  "categories": ["housing", "travel", "utilities", "social"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Find Housing",
+      "short_name": "Housing",
+      "url": "/#search"
+    },
+    {
+      "name": "Emergency Help",
+      "short_name": "Emergency",
+      "url": "/#emergency"
+    },
+    {
+      "name": "Rathaus Finder",
+      "short_name": "Rathaus",
+      "url": "/#rathaus"
+    }
+  ]
+}
