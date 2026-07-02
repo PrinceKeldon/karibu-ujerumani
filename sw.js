@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-auth-fetch-fix";
+const VERSION = "mvp0.1-20260702-api-diagnostics";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 

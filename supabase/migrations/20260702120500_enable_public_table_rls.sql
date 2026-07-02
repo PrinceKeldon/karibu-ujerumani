@@ -1,0 +1,13 @@
+alter table public.users enable row level security;
+alter table public.listings enable row level security;
+alter table public.community_posts enable row level security;
+alter table public.events enable row level security;
+alter table public.checklist_completions enable row level security;
+alter table public.messages enable row level security;
+alter table public.saved_listings enable row level security;
+alter table public.bookings enable row level security;
+alter table public.support_cases enable row level security;
+alter table public.states enable row level security;
+alter table public.cities enable row level security;
+alter table public.rathaus_offices enable row level security;
+alter table public.emergency_services enable row level security;

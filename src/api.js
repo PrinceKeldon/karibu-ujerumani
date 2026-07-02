@@ -27,15 +27,20 @@ export function clearToken() {
 
 async function request(path, opts = {}) {
   const token = getToken();
-  const res = await fetch(`${BASE}${path}`, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...opts.headers,
-    },
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...opts,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...opts.headers,
+      },
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+  } catch {
+    throw new Error(`Could not reach Karibu API at ${BASE}. Check that the backend is running and this browser can access that host.`);
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
