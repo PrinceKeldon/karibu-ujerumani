@@ -58,6 +58,9 @@ export const api = {
       return request(`/listings${qs ? "?" + qs : ""}`);
     },
     create: (d) => request("/listings", { method: "POST", body: d }),
+    update: (id, d) => request(`/listings/${id}`, { method: "PATCH", body: d }),
+    end: (id) => request(`/listings/${id}/end`, { method: "POST" }),
+    delete: (id) => request(`/listings/${id}`, { method: "DELETE" }),
     saved: () => request("/listings/saved"),
     toggleSave: (id) => request(`/listings/${id}/save`, { method: "POST" }),
   },
@@ -132,8 +135,10 @@ export const api = {
     me: () => request("/admin-api/me"),
     summary: () => request("/admin-api/summary"),
     listings: (status = "pending") => request(`/admin-api/listings?status=${encodeURIComponent(status)}`),
+    updateListing: (id, d) => request(`/admin-api/listings/${id}`, { method: "PATCH", body: d }),
     setListingStatus: (id, status, note) =>
       request(`/admin-api/listings/${id}/status`, { method: "POST", body: { status, note } }),
+    deleteListing: (id) => request(`/admin-api/listings/${id}`, { method: "DELETE" }),
     events: (status = "pending") => request(`/admin-api/events?status=${encodeURIComponent(status)}`),
     setEventStatus: (id, status, note) =>
       request(`/admin-api/events/${id}/status`, { method: "POST", body: { status, note } }),

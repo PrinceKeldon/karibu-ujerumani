@@ -8,6 +8,7 @@ from .. import models, schemas
 from ..auth import get_current_user
 from ..config import settings
 from ..database import get_db
+from .listings import apply_listing_update
 
 router = APIRouter(prefix="/admin-api", tags=["admin"])
 
@@ -109,13 +110,10 @@ def admin_listings(
     db: Session = Depends(get_db),
     staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
 ):
-    return (
-        db.query(models.Listing)
-        .filter(models.Listing.approval_status == status)
-        .order_by(models.Listing.created_at.desc())
-        .limit(100)
-        .all()
-    )
+    q = db.query(models.Listing)
+    if status != "all":
+        q = q.filter(models.Listing.approval_status == status)
+    return q.order_by(models.Listing.created_at.desc()).limit(100).all()
 
 
 @router.post("/listings/{listing_id}/status", response_model=schemas.ListingOut)
@@ -125,7 +123,7 @@ def update_listing_status(
     db: Session = Depends(get_db),
     staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
 ):
-    if data.status not in {"approved", "rejected", "suspended", "deleted"}:
+    if data.status not in {"approved", "rejected", "suspended", "ended", "deleted"}:
         raise HTTPException(status_code=400, detail="Invalid listing status")
     user, _role = staff
     listing = db.query(models.Listing).filter(models.Listing.id == listing_id).first()
@@ -136,6 +134,41 @@ def update_listing_status(
     db.commit()
     db.refresh(listing)
     return listing
+
+
+@router.patch("/listings/{listing_id}", response_model=schemas.ListingOut)
+def admin_update_listing(
+    listing_id: int,
+    data: schemas.ListingUpdate,
+    db: Session = Depends(get_db),
+    staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
+):
+    user, _role = staff
+    listing = db.query(models.Listing).filter(models.Listing.id == listing_id).first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    apply_listing_update(listing, data, db)
+    audit(db, user.id, "listing_edited", "listing", listing_id, "Edited from admin dashboard")
+    db.commit()
+    db.refresh(listing)
+    return listing
+
+
+@router.delete("/listings/{listing_id}")
+def admin_delete_listing(
+    listing_id: int,
+    db: Session = Depends(get_db),
+    staff: tuple[models.User, models.AdminRole] = Depends(require_staff),
+):
+    user, _role = staff
+    listing = db.query(models.Listing).filter(models.Listing.id == listing_id).first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    db.query(models.SavedListing).filter(models.SavedListing.listing_id == listing_id).delete()
+    listing.approval_status = "deleted"
+    audit(db, user.id, "listing_deleted", "listing", listing_id, listing.title)
+    db.commit()
+    return {"deleted": True, "id": listing_id}
 
 
 @router.get("/events", response_model=List[schemas.EventOut])

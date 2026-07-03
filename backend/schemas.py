@@ -105,6 +105,23 @@ class ListingCreate(BaseModel):
     theme: str = "sun"
 
 
+class ListingUpdate(BaseModel):
+    title: Optional[str] = None
+    price: Optional[int] = None
+    district: Optional[str] = None
+    postcode: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
+    city_id: Optional[int] = None
+    state_id: Optional[int] = None
+    address: Optional[str] = None
+    transit_info: Optional[str] = None
+    description: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    theme: Optional[str] = None
+
+
 class ListingOut(BaseModel):
     id: int
     title: str

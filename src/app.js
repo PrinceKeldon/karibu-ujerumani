@@ -346,7 +346,7 @@ async function loadAdminData() {
     const [me, summary, listings, events, supportCases, invites, announcements, messages, audit] = await Promise.all([
       api.admin.me(),
       api.admin.summary(),
-      api.admin.listings("pending"),
+      api.admin.listings("all"),
       api.admin.events("pending"),
       api.admin.supportCases("open"),
       api.admin.invites("pending"),
@@ -1012,7 +1012,9 @@ function detail() {
     </article>
     <div class="cta-row">
       ${isOwn
-        ? `<button class="secondary full-width" data-action="edit-listing">Edit listing</button>`
+        ? `<button class="secondary" data-action="edit-listing">Edit listing</button>
+           <button class="secondary danger" data-action="end-listing">End listing</button>
+           <button class="primary danger" data-action="delete-listing">Delete listing</button>`
         : `<button class="secondary" data-action="message-host">Message Host</button>
            <button class="primary" data-book-id="${l.id}">Request to Book</button>`
       }
@@ -1277,9 +1279,21 @@ function adminDashboard() {
     );
   }
   const summary = a.summary || {};
-  const listingRow = (l) => `<article class="admin-row">
-    <div><b>${escapeHtml(l.title)}</b><span>${escapeHtml(l.district)} · EUR ${l.price} · Host #${l.host_id || "-"}</span></div>
-    <div class="admin-actions"><button data-admin-listing="${l.id}" data-status="approved">Approve</button><button data-admin-listing="${l.id}" data-status="rejected">Reject</button><button data-admin-listing="${l.id}" data-status="suspended">Suspend</button></div>
+  const listingRow = (l) => `<article class="admin-row admin-edit-row">
+    <form class="admin-inline-form admin-listing-edit" data-admin-listing-form="${l.id}">
+      <input name="title" value="${escapeHtml(l.title)}" aria-label="Listing title" required />
+      <input name="price" type="number" min="100" value="${l.price}" aria-label="Monthly rent" required />
+      <input name="postcode" value="${escapeHtml(l.postcode || "")}" aria-label="Postal code" placeholder="Postcode" />
+      <input name="city_name" value="${escapeHtml(l.city_name || "")}" aria-label="City" placeholder="City" />
+      <input name="district" value="${escapeHtml(l.district || "")}" aria-label="District" placeholder="District" />
+      <span class="admin-meta">${escapeHtml(l.approval_status)} · Host #${l.host_id || "-"}</span>
+      <button type="submit">Save</button>
+      <button type="button" data-admin-listing="${l.id}" data-status="approved">Approve</button>
+      <button type="button" data-admin-listing="${l.id}" data-status="rejected">Reject</button>
+      <button type="button" data-admin-listing="${l.id}" data-status="suspended">Suspend</button>
+      <button type="button" data-admin-listing="${l.id}" data-status="ended">End</button>
+      <button type="button" data-admin-listing-delete="${l.id}">Delete</button>
+    </form>
   </article>`;
   const eventRow = (e) => `<article class="admin-row">
     <div><b>${escapeHtml(e.title)}</b><span>${escapeHtml(e.location)} · ${escapeHtml(e.ticket_price || "Ticketed")}</span></div>
@@ -1336,7 +1350,7 @@ function adminDashboard() {
       <b>${summary.open_support_cases || 0}<span>Open support</span></b>
       <b>${summary.pending_moderator_invites || 0}<span>Moderator invites</span></b>
     </div>
-    <section class="admin-panel"><h2>Listing Verification</h2>${a.listings.length ? a.listings.map(listingRow).join("") : `<p class="admin-empty">No pending listings.</p>`}</section>
+    <section class="admin-panel"><h2>Listing Management</h2>${a.listings.length ? a.listings.map(listingRow).join("") : `<p class="admin-empty">No listings yet.</p>`}</section>
     <section class="admin-panel"><h2>Ticketed Event Approval</h2>${a.events.length ? a.events.map(eventRow).join("") : `<p class="admin-empty">No pending ticketed events.</p>`}</section>
     <section class="admin-panel"><h2>Care & Emergency Support</h2>${a.supportCases.length ? a.supportCases.map(caseRow).join("") : `<p class="admin-empty">No open support cases.</p>`}</section>
     <section class="admin-panel">
@@ -1587,6 +1601,7 @@ app.addEventListener("click", (e) => {
   const cityBtn = e.target.closest("[data-city-id]");
   const deleteMessageBtn = e.target.closest("[data-delete-message]");
   const adminListingBtn = e.target.closest("[data-admin-listing]");
+  const adminListingDeleteBtn = e.target.closest("[data-admin-listing-delete]");
   const adminEventBtn = e.target.closest("[data-admin-event]");
   const adminCaseBtn = e.target.closest("[data-admin-case]");
   const adminInviteBtn = e.target.closest("[data-admin-invite]");
@@ -1601,6 +1616,7 @@ app.addEventListener("click", (e) => {
   if (carouselBtn) { openCarousel(parseInt(carouselBtn.dataset.carouselListing, 10)); return; }
   if (cityBtn) { selectCity(parseInt(cityBtn.dataset.cityId, 10)); return; }
   if (deleteMessageBtn) { deleteMessage(parseInt(deleteMessageBtn.dataset.deleteMessage, 10)); return; }
+  if (adminListingDeleteBtn) { deleteAdminListing(parseInt(adminListingDeleteBtn.dataset.adminListingDelete, 10)); return; }
   if (adminListingBtn) { updateAdminListing(parseInt(adminListingBtn.dataset.adminListing, 10), adminListingBtn.dataset.status); return; }
   if (adminEventBtn) { updateAdminEvent(parseInt(adminEventBtn.dataset.adminEvent, 10), adminEventBtn.dataset.status); return; }
   if (adminCaseBtn) { updateAdminCase(parseInt(adminCaseBtn.dataset.adminCase, 10), adminCaseBtn.dataset.status); return; }
@@ -1742,6 +1758,76 @@ async function deleteMessage(id) {
     showToast("Message deleted");
   } catch (err) {
     showToast(err.message || "Could not delete message");
+  }
+}
+
+function openListingEditSheet() {
+  const l = state.detailListing;
+  if (!l || l.host_id !== state.user?.id) {
+    showToast("You can only edit your own listing");
+    return;
+  }
+  openSheet(
+    "Edit listing",
+    `<form class="sheet-form" id="listing-edit-form">
+      <label>Room title
+        <input name="title" value="${escapeHtml(l.title)}" required maxlength="80" />
+      </label>
+      <label>Monthly rent (€)
+        <input name="price" type="number" min="100" max="5000" value="${l.price}" required />
+      </label>
+      <label>Postal code
+        <input name="postcode" inputmode="numeric" maxlength="5" value="${escapeHtml(l.postcode || "")}" />
+      </label>
+      <label>City / town
+        <input name="city_name" value="${escapeHtml(l.city_name || "")}" />
+      </label>
+      <label>District / neighbourhood
+        <input name="district" value="${escapeHtml(l.district || "")}" />
+      </label>
+      <label>Street address
+        <input name="address" value="${escapeHtml(l.address || "")}" />
+      </label>
+      <label>Nearest transport
+        <input name="transit_info" value="${escapeHtml(l.transit_info || "")}" />
+      </label>
+      <label>Description
+        <textarea name="description" rows="4" maxlength="500">${escapeHtml(l.description || "")}</textarea>
+      </label>
+      <p class="route-note">Edited listings return to admin review before appearing publicly again.</p>
+      <button class="primary" type="submit">Save changes</button>
+    </form>`,
+    "Close"
+  );
+}
+
+async function endOwnListing() {
+  const l = state.detailListing;
+  if (!l || l.host_id !== state.user?.id) return;
+  if (!confirm("End this listing? It will stop appearing in search results.")) return;
+  try {
+    const updated = await api.listings.end(l.id);
+    state.detailListing = updated;
+    state.listings = state.listings.filter((item) => item.id !== l.id);
+    render();
+    showToast("Listing ended");
+  } catch (err) {
+    showToast(err.message || "Could not end listing");
+  }
+}
+
+async function deleteOwnListing() {
+  const l = state.detailListing;
+  if (!l || l.host_id !== state.user?.id) return;
+  if (!confirm("Delete this listing from Karibu?")) return;
+  try {
+    await api.listings.delete(l.id);
+    state.detailListing = null;
+    state.listings = state.listings.filter((item) => item.id !== l.id);
+    setScreen(screens.search);
+    showToast("Listing deleted");
+  } catch (err) {
+    showToast(err.message || "Could not delete listing");
   }
 }
 
@@ -1897,6 +1983,17 @@ async function updateAdminListing(id, status) {
   }
 }
 
+async function deleteAdminListing(id) {
+  if (!confirm("Delete this listing from Karibu?")) return;
+  try {
+    await api.admin.deleteListing(id);
+    showToast("Listing deleted");
+    loadAdminData();
+  } catch (err) {
+    showToast(err.message || "Could not delete listing");
+  }
+}
+
 async function updateAdminEvent(id, status) {
   try {
     await api.admin.setEventStatus(id, status, `Set from admin dashboard to ${status}`);
@@ -2030,7 +2127,9 @@ function handleAction(action) {
     render();
     return;
   }
-  if (action === "edit-listing") { openSheet("Edit listing", `<p class="sheet-copy">Listing edits are handled by Karibu Support in MVP0.1 so verified listings stay consistent.</p><button class="primary" data-profile="Help & Support">Contact support</button>`, "Close"); return; }
+  if (action === "edit-listing") { openListingEditSheet(); return; }
+  if (action === "end-listing") { endOwnListing(); return; }
+  if (action === "delete-listing") { deleteOwnListing(); return; }
   if (action === "message-host" || action === "contact-host") { openHostMessageSheet(); return; }
   if (action === "support-message") {
     openSheet("Help & Support", supportCaseForm(), "Close");
@@ -2297,6 +2396,32 @@ app.addEventListener("submit", async (e) => {
     return;
   }
 
+  if (e.target.id === "listing-edit-form") {
+    const l = state.detailListing;
+    if (!l) return;
+    const fd = new FormData(e.target);
+    try {
+      const updated = await api.listings.update(l.id, {
+        title: fd.get("title"),
+        price: parseInt(fd.get("price"), 10),
+        postcode: fd.get("postcode") || null,
+        city_name: fd.get("city_name") || null,
+        district: fd.get("district") || null,
+        address: fd.get("address") || null,
+        transit_info: fd.get("transit_info") || null,
+        description: fd.get("description") || null,
+      });
+      state.detailListing = updated;
+      state.listings = state.listings.map((item) => item.id === updated.id ? updated : item);
+      state.sheet = null;
+      render();
+      showToast("Listing saved for review");
+    } catch (err) {
+      showToast(err.message || "Could not save listing");
+    }
+    return;
+  }
+
   if (e.target.id === "community-post-form") {
     const fd = new FormData(e.target);
     try {
@@ -2404,6 +2529,25 @@ app.addEventListener("submit", async (e) => {
     const id = parseInt(e.target.dataset.adminCaseForm, 10);
     const status = e.submitter?.value || "assigned";
     await updateAdminCase(id, status, fd.get("message_body") || null);
+    return;
+  }
+
+  if (e.target.matches("[data-admin-listing-form]")) {
+    const fd = new FormData(e.target);
+    const id = parseInt(e.target.dataset.adminListingForm, 10);
+    try {
+      await api.admin.updateListing(id, {
+        title: fd.get("title"),
+        price: parseInt(fd.get("price"), 10),
+        postcode: fd.get("postcode") || null,
+        city_name: fd.get("city_name") || null,
+        district: fd.get("district") || null,
+      });
+      showToast("Listing saved");
+      loadAdminData();
+    } catch (err) {
+      showToast(err.message || "Could not save listing");
+    }
     return;
   }
 
