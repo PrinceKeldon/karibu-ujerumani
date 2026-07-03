@@ -43,7 +43,7 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
   box-shadow: var(--shadow);
 }
 .screen-body {
-  height: calc(100% - 132px);
+  height: calc(100% - 132px - env(safe-area-inset-top, 0px));
   overflow: auto;
   padding: 0 20px 18px;
   scrollbar-width: none;
@@ -54,11 +54,11 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 }
 .screen-body::-webkit-scrollbar { display: none; }
 .topbar {
-  height: 72px;
+  height: calc(72px + env(safe-area-inset-top, 0px));
   display: grid;
   grid-template-columns: 44px 1fr 44px;
   align-items: center;
-  padding: 16px 16px 0;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 0;
 }
 .topbar > strong { text-align: center; font-size: 16px; }
 .topbar-right { display: flex; justify-content: flex-end; }
@@ -1994,5 +1994,5 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
     border-radius: 0;
     border: 0;
   }
-  .screen-body { height: calc(100% - 132px); }
+  .screen-body { height: calc(100% - 132px - env(safe-area-inset-top, 0px)); }
 }
