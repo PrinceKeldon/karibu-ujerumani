@@ -1,6 +1,7 @@
 from datetime import datetime
+import json
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -89,12 +90,18 @@ class Token(BaseModel):
 class ListingCreate(BaseModel):
     title: str
     price: int
-    district: str
+    district: Optional[str] = None
+    postcode: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
     city_id: Optional[int] = None
     state_id: Optional[int] = None
     address: Optional[str] = None
     transit_info: Optional[str] = None
     description: Optional[str] = None
+    images: List[str] = Field(default_factory=list)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     theme: str = "sun"
 
 
@@ -103,6 +110,9 @@ class ListingOut(BaseModel):
     title: str
     price: int
     district: str
+    postcode: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
     address: Optional[str] = None
     transit_info: Optional[str] = None
     description: Optional[str] = None
@@ -114,8 +124,35 @@ class ListingOut(BaseModel):
     state_id: Optional[int] = None
     approval_status: str = "pending"
     is_saved: bool = False
+    images: List[str] = Field(default_factory=list)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    @field_validator("images", mode="before")
+    @classmethod
+    def parse_images(cls, value):
+        if not value:
+            return []
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return []
+            return parsed if isinstance(parsed, list) else []
+        return value
 
     model_config = {"from_attributes": True}
+
+
+class PostcodeLookupOut(BaseModel):
+    postcode: str
+    city_name: str
+    state_name: Optional[str] = None
+    state_id: Optional[int] = None
+    city_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    label: Optional[str] = None
 
 
 class StateOut(BaseModel):

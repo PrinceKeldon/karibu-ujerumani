@@ -570,8 +570,18 @@ h1, h2, h3, p { margin: 0; }
   place-items: center;
   background: rgba(255,255,255,.92);
 }
-.floating.back { position: absolute; top: 18px; left: 16px; }
-.hero-actions { position: absolute; top: 18px; right: 16px; display: flex; gap: 10px; }
+.floating.back {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  left: calc(env(safe-area-inset-left, 0px) + 16px);
+}
+.hero-actions {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  right: calc(env(safe-area-inset-right, 0px) + 16px);
+  display: flex;
+  gap: 10px;
+}
 .detail-hero span {
   position: absolute;
   left: 18px;
@@ -621,6 +631,7 @@ h1, h2, h3, p { margin: 0; }
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   padding: 16px 18px 24px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
   background: linear-gradient(transparent, #fff 24%);
 }
 .primary, .secondary { height: 52px; border-radius: 14px; font-size: 13px; font-weight: 800; }
@@ -1501,6 +1512,45 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+.location-fields {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+.location-fields legend {
+  padding: 0 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+.postcode-row {
+  display: grid;
+  grid-template-columns: 1fr 76px;
+  gap: 8px;
+}
+.postcode-row button {
+  height: 46px;
+  border-radius: 13px;
+  background: var(--green);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+.location-result {
+  margin: 0;
+  color: var(--green-dark);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+.location-result.muted {
+  color: var(--muted);
+  font-weight: 600;
 }
 .room-form label {
   display: grid;

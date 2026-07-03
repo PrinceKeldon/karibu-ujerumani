@@ -63,6 +63,7 @@ export const api = {
   },
   geo: {
     states: () => request("/geo/states"),
+    postcode: (postcode) => request(`/geo/postcode/${encodeURIComponent(postcode)}`),
     cities: (params = {}) => {
       const qs = new URLSearchParams(
         Object.fromEntries(Object.entries(params).filter(([, v]) => v != null))
@@ -112,6 +113,7 @@ export const api = {
   messages: {
     list: () => request("/messages"),
     send: (d) => request("/messages", { method: "POST", body: d }),
+    markRead: () => request("/messages/read", { method: "POST" }),
     delete: (id) => request(`/messages/${id}`, { method: "DELETE" }),
   },
   bookings: {

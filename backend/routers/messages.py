@@ -62,6 +62,25 @@ def send_message(
     return {"id": msg.id, "sent": True}
 
 
+@router.post("/read")
+def mark_messages_read(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    unread_messages = (
+        db.query(models.Message)
+        .filter(
+            models.Message.to_user_id == current_user.id,
+            models.Message.is_read == False,  # noqa: E712
+        )
+        .all()
+    )
+    for msg in unread_messages:
+        msg.is_read = True
+    db.commit()
+    return {"updated": len(unread_messages)}
+
+
 @router.delete("/{message_id}")
 def delete_message(
     message_id: int,

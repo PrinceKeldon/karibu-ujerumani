@@ -90,6 +90,17 @@ def geocode_address_backend(query: str) -> dict | None:
     }
 
 
+def locality_from_address(address: dict) -> str | None:
+    return (
+        address.get("city")
+        or address.get("town")
+        or address.get("village")
+        or address.get("municipality")
+        or address.get("suburb")
+        or address.get("county")
+    )
+
+
 def discover_rathaus_from_nominatim(query: str, coords: dict, db: Session) -> int:
     saved = 0
     address = coords.get("address") or {}
@@ -315,6 +326,36 @@ def get_cities_near(
         if distance <= radius_km
     ][:limit]
     return [city_out(city, db, distance) for city, distance in nearby]
+
+
+@router.get("/postcode/{postcode}", response_model=schemas.PostcodeLookupOut)
+def lookup_postcode(postcode: str, db: Session = Depends(get_db)):
+    normalized = "".join(ch for ch in postcode.strip() if ch.isdigit())
+    if len(normalized) != 5:
+        raise HTTPException(status_code=400, detail="Enter a valid 5-digit German postal code")
+    coords = geocode_address_backend(normalized)
+    if not coords:
+        raise HTTPException(status_code=404, detail="Could not find that postal code")
+    address = coords.get("address") or {}
+    city_name = locality_from_address(address)
+    state_name = address.get("state")
+    if not city_name:
+        raise HTTPException(status_code=404, detail="Could not resolve the city for that postal code")
+    state = db.query(models.State).filter(models.State.name == state_name).first() if state_name else None
+    city_query = db.query(models.City).filter(models.City.name.ilike(city_name))
+    if state:
+        city_query = city_query.filter(models.City.state_id == state.id)
+    city = city_query.first()
+    return schemas.PostcodeLookupOut(
+        postcode=normalized,
+        city_name=city_name,
+        state_name=state_name,
+        state_id=state.id if state else None,
+        city_id=city.id if city else None,
+        latitude=coords["lat"],
+        longitude=coords["lng"],
+        label=coords.get("label"),
+    )
 
 
 @router.get("/rathaus", response_model=list[schemas.RathausOfficeOut])

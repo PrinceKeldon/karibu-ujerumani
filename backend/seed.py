@@ -108,6 +108,18 @@ def ensure_schema_compatibility() -> None:
         statements.append("ALTER TABLE listings ADD COLUMN city_id INTEGER")
     if "approval_status" not in listing_columns:
         statements.append("ALTER TABLE listings ADD COLUMN approval_status VARCHAR DEFAULT 'approved' NOT NULL")
+    if "images" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN images TEXT")
+    if "postcode" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN postcode VARCHAR")
+    if "city_name" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN city_name VARCHAR")
+    if "state_name" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN state_name VARCHAR")
+    if "latitude" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN latitude FLOAT")
+    if "longitude" not in listing_columns:
+        statements.append("ALTER TABLE listings ADD COLUMN longitude FLOAT")
     if "profile_photo_url" not in user_columns:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_url TEXT")
     if "profile_photo_path" not in user_columns:

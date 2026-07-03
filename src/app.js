@@ -59,6 +59,7 @@ let state = {
   profileLoaded: false,
   emergencyType: "All",
   listRoomAmenities: [],
+  listRoomLocation: null,
   searchQuery: "",
   messages: [],
   sheet: null,
@@ -314,9 +315,16 @@ async function loadChecklist() {
 
 async function loadMessages() {
   try {
-    state.conversations = await api.messages.list();
+    const conversations = await api.messages.list();
+    const shouldMarkRead = state.screen === screens.messages && conversations.some((c) => c.unread_count);
+    state.conversations = shouldMarkRead
+      ? conversations.map((c) => ({ ...c, is_read: true, unread_count: 0 }))
+      : conversations;
     state.messagesLoaded = true;
     render();
+    if (shouldMarkRead) {
+      api.messages.markRead().catch(() => showToast("Could not mark messages as read"));
+    }
   } catch (e) {
     state.messagesLoaded = true;
     render();
@@ -486,7 +494,7 @@ function demoLayer() {
 }
 
 function bottomNav() {
-  const unread = state.conversations.filter((c) => !c.is_read).length;
+  const unread = state.conversations.reduce((total, c) => total + (c.unread_count || 0), 0);
   return `<nav class="bottom-nav">${nav
     .map(([label, screen, icon]) => {
       const active = state.screen === screen ||
@@ -737,6 +745,7 @@ function register() {
 function listingCard(l) {
   const saved = state.savedIds.has(l.id);
   const photo = l.images?.[0];
+  const location = listingLocationLabel(l);
   return `<article class="listing-card" data-listing-id="${l.id}">
     <div class="listing-image room-${l.theme}">
       ${photo
@@ -748,15 +757,20 @@ function listingCard(l) {
     <div class="listing-content">
       <div class="price"><strong>€${l.price}</strong> / month</div>
       <h3>${l.title}</h3>
-      <p>${l.transit_info || l.district} · ${l.district}</p>
+      <p>${escapeHtml(l.transit_info || location)} · ${escapeHtml(location)}</p>
       <div class="chips"><span>Private Room</span><span>Wi‑Fi</span><span>Kitchen</span><b>${l.rating}</b></div>
     </div>
   </article>`;
 }
 
+function listingLocationLabel(l) {
+  const place = [l.postcode, l.city_name].filter(Boolean).join(" ");
+  return place || l.district || "Germany";
+}
+
 function home() {
   const firstName = state.user?.full_name?.split(" ")[0] || "there";
-  const unreadMessages = state.conversations.filter((c) => !c.is_read).length;
+  const unreadMessages = state.conversations.reduce((total, c) => total + (c.unread_count || 0), 0);
   const topListings = state.listings.slice(0, 3);
   const cityName = state.selectedCity?.name || "Berlin";
   const tierCities = state.cities.filter((c) => c.is_tier_1 || c.is_tier_2).slice(0, 8);
@@ -839,8 +853,11 @@ function filterListings(query) {
   if (!q) return state.listings;
   return state.listings.filter(
     (l) =>
-      l.district.toLowerCase().includes(q) ||
-      l.title.toLowerCase().includes(q) ||
+    l.district.toLowerCase().includes(q) ||
+    (l.postcode || "").toLowerCase().includes(q) ||
+    (l.city_name || "").toLowerCase().includes(q) ||
+    (l.state_name || "").toLowerCase().includes(q) ||
+    l.title.toLowerCase().includes(q) ||
       (l.address || "").toLowerCase().includes(q) ||
       (l.transit_info || "").toLowerCase().includes(q)
   );
@@ -869,11 +886,11 @@ function updateSearchResultsDom() {
 
 function listRoom() {
   const themes = ["sun", "leaf", "city"];
-  const districts = ["Neukölln", "Wedding", "Mitte", "Prenzlauer Berg", "Charlottenburg", "Kreuzberg", "Friedrichshain", "Tempelhof", "Schöneberg", "Steglitz"];
   const amenities = ["Anmeldung friendly", "Wi-Fi", "Kitchen", "Furnished", "Private room", "Heating", "Near U-Bahn", "Women-friendly", "No deposit", "Short stay"];
+  const location = state.listRoomLocation || {};
   return shell(
     "List Your Room",
-    `<p class="form-intro">Share your spare room in <strong>${state.selectedCity?.name || "Germany"}</strong> with the Karibu community. We'll verify it before it goes live.</p>
+    `<p class="form-intro">Share your spare room anywhere in Germany with the Karibu community. We'll verify it before it goes live.</p>
     <form class="room-form" id="list-room-form">
       <fieldset class="image-buckets">
         <legend>Listing photos</legend>
@@ -894,13 +911,30 @@ function listRoom() {
       <label>Monthly rent (€) <span class="req">*</span>
         <input type="number" name="price" placeholder="e.g. 550" min="100" max="5000" required />
       </label>
-      <label>District <span class="req">*</span>
-        <select name="district" required>
-          <option value="">— Select district —</option>
-          ${districts.map((d) => `<option value="${d}">${d}</option>`).join("")}
-        </select>
-      </label>
-      <label>Full address
+      <fieldset class="location-fields">
+        <legend>Location</legend>
+        <label>Postal code <span class="req">*</span>
+          <div class="postcode-row">
+            <input id="listing-postcode" type="text" name="postcode" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="e.g. 50667" value="${escapeHtml(location.postcode || "")}" required />
+            <button type="button" data-action="lookup-postcode">Find</button>
+          </div>
+        </label>
+        <label>City / town <span class="req">*</span>
+          <input id="listing-city-name" type="text" name="city_name" placeholder="Auto-filled from postal code" value="${escapeHtml(location.city_name || "")}" required />
+        </label>
+        <label>State
+          <input id="listing-state-name" type="text" name="state_name" placeholder="Auto-filled" value="${escapeHtml(location.state_name || "")}" />
+        </label>
+        <label>District / neighbourhood
+          <input type="text" name="district" placeholder="e.g. Ehrenfeld, Mitte, Neustadt" value="${escapeHtml(location.district || "")}" />
+        </label>
+        <input type="hidden" name="city_id" value="${location.city_id || ""}" />
+        <input type="hidden" name="state_id" value="${location.state_id || ""}" />
+        <input type="hidden" name="latitude" value="${location.latitude || ""}" />
+        <input type="hidden" name="longitude" value="${location.longitude || ""}" />
+        ${location.label ? `<p class="location-result">Matched: ${escapeHtml(location.label)}</p>` : `<p class="location-result muted">Use Find to auto-fill city and state. You can still edit them if needed.</p>`}
+      </fieldset>
+      <label>Street address
         <input type="text" name="address" placeholder="Street name and house number" />
       </label>
       <label>Nearest transport
@@ -940,6 +974,8 @@ function detail() {
   const saved = state.savedIds.has(l.id);
   const isOwn = l.host_id === state.user?.id;
   const photos = l.images || [];
+  const location = listingLocationLabel(l);
+  const region = [l.district, l.state_name].filter(Boolean).join(" · ");
   return shell(
     "",
     `<div class="detail-hero room-${l.theme}">
@@ -958,7 +994,8 @@ function detail() {
         <span class="rating-pill">${l.rating}</span>
       </div>
       <h1>${l.title}</h1>
-      <p class="detail-location">📍 ${l.address ? l.address + ", " : ""}${l.district}, Berlin</p>
+      <p class="detail-location">📍 ${escapeHtml([l.address, location].filter(Boolean).join(", "))}</p>
+      ${region ? `<p class="detail-transit">${escapeHtml(region)}</p>` : ""}
       ${l.transit_info ? `<p class="detail-transit">🚇 ${l.transit_info}</p>` : ""}
       ${!isOwn ? `<span class="verified">✓ Community Verified</span>` : `<span class="verified own">Your listing</span>`}
       <div class="amenities">
@@ -969,7 +1006,7 @@ function detail() {
       <h2>About the place</h2>
       <p class="detail-desc">${l.description || "No description provided."}</p>
       <div class="detail-map">
-        <div class="map-placeholder">📍 ${l.district} · Berlin</div>
+        <div class="map-placeholder">📍 ${escapeHtml(location)}</div>
         <p class="map-note">Community verified area · Safe for Anmeldung</p>
       </div>
     </article>
@@ -1981,6 +2018,7 @@ function handleAction(action) {
   }
   if (action === "clear-search") { state.searchQuery = ""; render(); return; }
   if (action === "city-selector") { openSheet("Choose city", citySelectorSheet(), "Close"); return; }
+  if (action === "lookup-postcode") { lookupListingPostcode(); return; }
   if (action === "close-carousel") { state.carousel = null; render(); return; }
   if (action === "carousel-prev" && state.carousel) {
     state.carousel.index = (state.carousel.index - 1 + state.carousel.images.length) % state.carousel.images.length;
@@ -2414,9 +2452,14 @@ app.addEventListener("submit", async (e) => {
     doListRoom({
       title: fd.get("title"),
       price: parseInt(fd.get("price"), 10),
-      district: fd.get("district"),
-      city_id: state.selectedCity?.id,
-      state_id: state.selectedCity?.state_id,
+      district: fd.get("district") || undefined,
+      postcode: fd.get("postcode") || undefined,
+      city_name: fd.get("city_name") || undefined,
+      state_name: fd.get("state_name") || undefined,
+      city_id: fd.get("city_id") ? parseInt(fd.get("city_id"), 10) : undefined,
+      state_id: fd.get("state_id") ? parseInt(fd.get("state_id"), 10) : undefined,
+      latitude: fd.get("latitude") ? parseFloat(fd.get("latitude")) : undefined,
+      longitude: fd.get("longitude") ? parseFloat(fd.get("longitude")) : undefined,
       address: fd.get("address") || undefined,
       transit_info: fd.get("transit_info") || undefined,
       description: fd.get("description") || undefined,
@@ -2464,6 +2507,25 @@ function updateAmenityPickerDom() {
   }
 }
 
+async function lookupListingPostcode() {
+  const postcodeInput = document.getElementById("listing-postcode");
+  const postcode = postcodeInput?.value.trim();
+  if (!/^\d{5}$/.test(postcode || "")) {
+    showToast("Enter a valid 5-digit German postal code");
+    postcodeInput?.focus();
+    return;
+  }
+  try {
+    const result = await api.geo.postcode(postcode);
+    state.listRoomLocation = result;
+    render();
+    showToast(`Location found: ${result.city_name}`);
+  } catch (err) {
+    state.listRoomLocation = { ...(state.listRoomLocation || {}), postcode };
+    showToast(err.message || "Could not find that postal code");
+  }
+}
+
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2486,19 +2548,20 @@ async function doListRoom(data) {
   state.listRoomLoading = true;
   render();
   try {
-    const { images, amenities, communication_route, ...listingData } = data;
+    const { amenities, communication_route, ...listingData } = data;
     const listing = await api.listings.create(listingData);
-    const enrichedListing = { ...listing, images, amenities, communication_route };
+    const enrichedListing = { ...listing, amenities, communication_route };
     if (enrichedListing.approval_status === "approved") {
       state.listings = [enrichedListing, ...state.listings];
     }
-    if (state.selectedCity && enrichedListing.approval_status === "approved") {
+    if (state.selectedCity && enrichedListing.city_id === state.selectedCity.id && enrichedListing.approval_status === "approved") {
       state.selectedCity = { ...state.selectedCity, listing_count: (state.selectedCity.listing_count || 0) + 1 };
       state.cities = state.cities.map((c) => c.id === state.selectedCity.id ? state.selectedCity : c);
       state.listingFallback = false;
     }
     state.listRoomLoading = false;
     state.listRoomAmenities = [];
+    state.listRoomLocation = null;
     openSheet(
       "Listing submitted",
       `<p class="sheet-copy">Your room <strong>${enrichedListing.title}</strong> has been submitted for admin approval. It will appear in search results after approval.</p>

@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -32,6 +33,19 @@ def create_listing(
     city = db.query(models.City).filter(models.City.id == data.city_id).first() if data.city_id else None
     payload = data.model_dump()
     payload["state_id"] = data.state_id or (city.state_id if city else None)
+    payload["images"] = json.dumps(data.images[:3])
+    if city:
+        payload["city_name"] = payload.get("city_name") or city.name
+        state = db.query(models.State).filter(models.State.id == city.state_id).first()
+        payload["state_name"] = payload.get("state_name") or (state.name if state else None)
+        payload["latitude"] = payload.get("latitude") or city.latitude
+        payload["longitude"] = payload.get("longitude") or city.longitude
+    payload["district"] = (
+        (payload.get("district") or "").strip()
+        or payload.get("city_name")
+        or payload.get("postcode")
+        or "Germany"
+    )
     listing = models.Listing(
         **payload,
         host_id=current_user.id,
@@ -60,7 +74,13 @@ def get_listings(
     if state_id:
         q = q.filter(models.Listing.state_id == state_id)
     if district:
-        q = q.filter(models.Listing.district.ilike(f"%{district}%"))
+        pattern = f"%{district}%"
+        q = q.filter(
+            (models.Listing.district.ilike(pattern))
+            | (models.Listing.city_name.ilike(pattern))
+            | (models.Listing.postcode.ilike(pattern))
+            | (models.Listing.state_name.ilike(pattern))
+        )
     if budget_max:
         q = q.filter(models.Listing.price <= budget_max)
     return _with_saved(q.all(), current_user.id, db)
