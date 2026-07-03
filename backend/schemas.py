@@ -117,6 +117,7 @@ class ListingUpdate(BaseModel):
     address: Optional[str] = None
     transit_info: Optional[str] = None
     description: Optional[str] = None
+    images: Optional[List[str]] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     theme: Optional[str] = None

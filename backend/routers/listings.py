@@ -21,6 +21,7 @@ LISTING_UPDATE_FIELDS = {
     "address",
     "transit_info",
     "description",
+    "images",
     "latitude",
     "longitude",
     "theme",
@@ -51,6 +52,8 @@ def apply_listing_update(listing: models.Listing, data: schemas.ListingUpdate, d
         return
     if {"district", "postcode", "city_name", "city_id"} & payload.keys():
         payload = normalize_listing_payload(payload, db)
+    if "images" in payload:
+        payload["images"] = json.dumps((payload.get("images") or [])[:3])
     for field, value in payload.items():
         if field in LISTING_UPDATE_FIELDS:
             setattr(listing, field, value)

@@ -1770,6 +1770,19 @@ function openListingEditSheet() {
   openSheet(
     "Edit listing",
     `<form class="sheet-form" id="listing-edit-form">
+      <fieldset class="image-buckets">
+        <legend>Listing photos</legend>
+        <p>${(l.images || []).length ? `${l.images.length} current photo${l.images.length === 1 ? "" : "s"}. ` : ""}Choose new images only if you want to replace the current listing photos.</p>
+        <label>Main image
+          <input type="file" name="main_image" accept="image/*" />
+        </label>
+        <label>Support image 1
+          <input type="file" name="support_image_1" accept="image/*" />
+        </label>
+        <label>Support image 2
+          <input type="file" name="support_image_2" accept="image/*" />
+        </label>
+      </fieldset>
       <label>Room title
         <input name="title" value="${escapeHtml(l.title)}" required maxlength="80" />
       </label>
@@ -2401,7 +2414,8 @@ app.addEventListener("submit", async (e) => {
     if (!l) return;
     const fd = new FormData(e.target);
     try {
-      const updated = await api.listings.update(l.id, {
+      const images = await readListingImages(e.target);
+      const payload = {
         title: fd.get("title"),
         price: parseInt(fd.get("price"), 10),
         postcode: fd.get("postcode") || null,
@@ -2410,7 +2424,9 @@ app.addEventListener("submit", async (e) => {
         address: fd.get("address") || null,
         transit_info: fd.get("transit_info") || null,
         description: fd.get("description") || null,
-      });
+      };
+      if (images.length) payload.images = images;
+      const updated = await api.listings.update(l.id, payload);
       state.detailListing = updated;
       state.listings = state.listings.map((item) => item.id === updated.id ? updated : item);
       state.sheet = null;
