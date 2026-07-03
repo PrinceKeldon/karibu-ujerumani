@@ -1,4 +1,4 @@
-const VERSION = "mvp0.1-20260702-support-admin-actions";
+const VERSION = "mvp0.1-20260703-api-refresh";
 const STATIC_CACHE = `karibu-static-${VERSION}`;
 const API_CACHE = `karibu-api-${VERSION}`;
 
@@ -11,10 +11,13 @@ const STATIC_ASSETS = [
   "/og-image.svg",
   "/icons/icon.svg",
   "/src/config.js",
-  "/src/app.js?v=admin-route-fix-20260702",
+  "/src/app.js?v=api-refresh-20260703",
   "/src/api.js",
-  "/src/styles.css?v=admin-route-fix-20260702"
+  "/src/styles.css?v=api-refresh-20260703"
 ];
+
+const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS.map((asset) => new URL(asset, self.location.origin).pathname));
+const CODE_ASSET_PATHS = new Set(["/src/config.js", "/src/app.js", "/src/api.js", "/src/styles.css"]);
 
 const CACHEABLE_API_PATHS = [
   "/geo/states",
@@ -56,7 +59,12 @@ self.addEventListener("fetch", (event) => {
       return;
     }
 
-    if (STATIC_ASSETS.includes(url.pathname)) {
+    if (CODE_ASSET_PATHS.has(url.pathname)) {
+      event.respondWith(networkFirst(request, STATIC_CACHE));
+      return;
+    }
+
+    if (STATIC_ASSET_PATHS.has(url.pathname)) {
       event.respondWith(cacheFirst(request, STATIC_CACHE));
       return;
     }

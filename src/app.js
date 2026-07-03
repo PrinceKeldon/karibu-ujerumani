@@ -1,4 +1,4 @@
-import { api, getToken, setToken, clearToken } from "./api.js";
+import { api, getToken, setToken, clearToken } from "./api.js?v=api-refresh-20260703";
 
 // ── Screens ───────────────────────────────────────────────────
 const screens = {
