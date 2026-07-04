@@ -280,6 +280,11 @@ class CommunityPostCreate(BaseModel):
     tab: str = "For You"
 
 
+class CommunityPostUpdate(BaseModel):
+    body: Optional[str] = None
+    tab: Optional[str] = None
+
+
 class CommunityPostOut(BaseModel):
     id: int
     author_name: str
@@ -290,6 +295,8 @@ class CommunityPostOut(BaseModel):
     comments: int
     created_at: datetime
     is_liked: bool = False
+    is_owner: bool = False
+    can_delete: bool = False
 
     model_config = {"from_attributes": True}
 

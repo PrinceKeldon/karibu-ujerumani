@@ -1164,7 +1164,7 @@ function community() {
       </div>`;
     } else {
       content = `<div class="post-stack">${state.communityPosts.map((p) => `<article class="post" data-post-id="${p.id}">
-        <header><b>${escapeHtml(p.author_name)}</b><span>${escapeHtml(p.author_area)} · ${timeAgo(p.created_at)}</span></header>
+        <header><b>${escapeHtml(p.author_name)}</b><span>${escapeHtml(p.author_area)} · ${timeAgo(p.created_at)}</span>${p.is_owner || p.can_delete ? `<div class="post-owner-actions">${p.is_owner ? `<button data-edit-post-id="${p.id}" aria-label="Edit post">Edit</button>` : ""}${p.can_delete ? `<button data-delete-post-id="${p.id}" aria-label="Delete post">Delete</button>` : ""}</div>` : ""}</header>
         <h2>${escapeHtml(p.body)}</h2>
         <footer>
           <button class="${p.is_liked ? "active" : ""}" data-like-id="${p.id}">${p.is_liked ? "♥" : "♡"} ${p.likes}</button>
@@ -1638,6 +1638,8 @@ app.addEventListener("click", (e) => {
   const rsvpBtn = e.target.closest("[data-rsvp-id]");
   const commentBtn = e.target.closest("[data-comment-id]");
   const sharePostBtn = e.target.closest("[data-share-post-id]");
+  const editPostBtn = e.target.closest("[data-edit-post-id]");
+  const deletePostBtn = e.target.closest("[data-delete-post-id]");
   const bookBtn = e.target.closest("[data-book-id]");
   const profileBtn = e.target.closest("[data-profile]");
   const officeBtn = e.target.closest("[data-office]");
@@ -1678,6 +1680,8 @@ app.addEventListener("click", (e) => {
   if (likeBtn) { handleLike(parseInt(likeBtn.dataset.likeId)); return; }
   if (commentBtn) { openComments(parseInt(commentBtn.dataset.commentId, 10)); return; }
   if (sharePostBtn) { shareCommunityPost(parseInt(sharePostBtn.dataset.sharePostId, 10)); return; }
+  if (editPostBtn) { openCommunityPostEdit(parseInt(editPostBtn.dataset.editPostId, 10)); return; }
+  if (deletePostBtn) { deleteCommunityPost(parseInt(deletePostBtn.dataset.deletePostId, 10)); return; }
   if (rsvpBtn) { handleRsvp(parseInt(rsvpBtn.dataset.rsvpId)); return; }
   if (caseBtn) { handleEmergencyCase(caseBtn.dataset.caseType, caseBtn.dataset.askPref === "true"); return; }
   if (listingBtn && !saveBtn) { handleOpenListing(parseInt(listingBtn.dataset.listingId)); return; }
@@ -1923,6 +1927,47 @@ function communityPostForm() {
     </label>
     <button class="primary" type="submit">Publish to community</button>
   </form>`;
+}
+
+function communityPostEditForm(post) {
+  return `<form class="sheet-form" id="community-post-edit-form">
+    <input type="hidden" name="post_id" value="${post.id}" />
+    <label>Post type
+      <select name="tab" required>
+        ${["Questions", "Tips", "For You"].map((tab) => `<option value="${tab}" ${tab === post.tab ? "selected" : ""}>${tab === "For You" ? "General post" : tab}</option>`).join("")}
+      </select>
+    </label>
+    <label>Post
+      <textarea name="body" rows="5" maxlength="600" required>${escapeHtml(post.body)}</textarea>
+    </label>
+    <button class="primary" type="submit">Save post</button>
+  </form>`;
+}
+
+function openCommunityPostEdit(postId) {
+  const post = state.communityPosts.find((p) => p.id === postId);
+  if (!post || !post.is_owner) {
+    showToast("You can only edit posts you created");
+    return;
+  }
+  openSheet("Edit community post", communityPostEditForm(post), "Close");
+}
+
+async function deleteCommunityPost(postId) {
+  const post = state.communityPosts.find((p) => p.id === postId);
+  if (!post || !post.can_delete) {
+    showToast("You do not have permission to delete this post");
+    return;
+  }
+  if (!confirm("Delete this community post?")) return;
+  try {
+    await api.community.deletePost(postId);
+    state.communityPosts = state.communityPosts.filter((p) => p.id !== postId);
+    render();
+    showToast("Community post deleted");
+  } catch (err) {
+    showToast(err.message || "Could not delete post");
+  }
 }
 
 function communityEventForm() {
@@ -2507,6 +2552,28 @@ app.addEventListener("submit", async (e) => {
       showToast("Community post published");
     } catch (err) {
       showToast(err.message || "Could not publish post");
+    }
+    return;
+  }
+
+  if (e.target.id === "community-post-edit-form") {
+    const fd = new FormData(e.target);
+    const postId = parseInt(fd.get("post_id"), 10);
+    try {
+      const post = await api.community.updatePost(postId, {
+        tab: fd.get("tab"),
+        body: fd.get("body"),
+      });
+      state.sheet = null;
+      state.communityPosts = state.communityPosts.map((item) => item.id === post.id ? post : item);
+      if (post.tab !== state.communityTab && state.communityTab !== "For You") {
+        await loadCommunity(state.communityTab);
+      } else {
+        render();
+      }
+      showToast("Community post saved");
+    } catch (err) {
+      showToast(err.message || "Could not save post");
     }
     return;
   }

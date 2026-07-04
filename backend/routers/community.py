@@ -3,14 +3,32 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth import get_current_user
+from ..config import settings
 from ..database import get_db
 
 router = APIRouter(prefix="/community", tags=["community"])
 POST_TABS = {"For You", "Questions", "Tips"}
 EVENT_TAGS = {"Community", "Meetup", "Workshop", "Sports", "Faith", "Family"}
+SUPER_ADMIN_EMAILS = {"exec@frankkoine.com"}
 
 
-def _post_out(post: models.CommunityPost, liked_ids: set[int]) -> schemas.CommunityPostOut:
+def configured_admin_emails() -> set[str]:
+    configured = {email.strip().lower() for email in settings.admin_emails.split(",") if email.strip()}
+    return configured | SUPER_ADMIN_EMAILS
+
+
+def is_admin_user(user: models.User, db: Session) -> bool:
+    role = db.query(models.AdminRole).filter(models.AdminRole.user_id == user.id).first()
+    return (role is not None and role.role == "admin") or user.email.lower() in configured_admin_emails()
+
+
+def _post_out(
+    post: models.CommunityPost,
+    liked_ids: set[int],
+    current_user_id: int | None = None,
+    can_moderate: bool = False,
+) -> schemas.CommunityPostOut:
+    is_owner = current_user_id is not None and post.user_id == current_user_id
     return schemas.CommunityPostOut(
         id=post.id,
         author_name=post.author_name,
@@ -21,6 +39,8 @@ def _post_out(post: models.CommunityPost, liked_ids: set[int]) -> schemas.Commun
         comments=post.comments,
         created_at=post.created_at,
         is_liked=post.id in liked_ids,
+        is_owner=is_owner,
+        can_delete=is_owner or can_moderate,
     )
 
 
@@ -64,7 +84,8 @@ def get_posts(
         )
         .all()
     }
-    return [_post_out(post, liked_ids) for post in posts]
+    can_moderate = is_admin_user(current_user, db)
+    return [_post_out(post, liked_ids, current_user.id, can_moderate) for post in posts]
 
 
 @router.post("/posts", response_model=schemas.CommunityPostOut)
@@ -87,7 +108,58 @@ def create_post(
     db.add(post)
     db.commit()
     db.refresh(post)
-    return _post_out(post, set())
+    return _post_out(post, set(), current_user.id, is_admin_user(current_user, db))
+
+
+@router.patch("/posts/{post_id}", response_model=schemas.CommunityPostOut)
+def update_post(
+    post_id: int,
+    data: schemas.CommunityPostUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only edit posts you created")
+    if data.body is not None:
+        body = data.body.strip()
+        if not body:
+            raise HTTPException(status_code=400, detail="Post body is required")
+        post.body = body
+    if data.tab is not None:
+        post.tab = data.tab if data.tab in POST_TABS else post.tab
+    db.commit()
+    db.refresh(post)
+    liked = (
+        db.query(models.CommunityPostLike)
+        .filter(
+            models.CommunityPostLike.post_id == post_id,
+            models.CommunityPostLike.user_id == current_user.id,
+        )
+        .first()
+        is not None
+    )
+    return _post_out(post, {post_id} if liked else set(), current_user.id, is_admin_user(current_user, db))
+
+
+@router.delete("/posts/{post_id}")
+def delete_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    post = db.query(models.CommunityPost).filter(models.CommunityPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != current_user.id and not is_admin_user(current_user, db):
+        raise HTTPException(status_code=403, detail="You can only delete posts you created")
+    db.query(models.CommunityComment).filter(models.CommunityComment.post_id == post_id).delete()
+    db.query(models.CommunityPostLike).filter(models.CommunityPostLike.post_id == post_id).delete()
+    db.delete(post)
+    db.commit()
+    return {"deleted": True, "id": post_id}
 
 
 @router.post("/posts/{post_id}/like")

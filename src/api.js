@@ -100,6 +100,8 @@ export const api = {
     posts: (tab = "For You", sort = "newest") =>
       request(`/community/posts?tab=${encodeURIComponent(tab)}&sort=${encodeURIComponent(sort)}`),
     createPost: (d) => request("/community/posts", { method: "POST", body: d }),
+    updatePost: (id, d) => request(`/community/posts/${id}`, { method: "PATCH", body: d }),
+    deletePost: (id) => request(`/community/posts/${id}`, { method: "DELETE" }),
     like: (id) => request(`/community/posts/${id}/like`, { method: "POST" }),
     comments: (id) => request(`/community/posts/${id}/comments`),
     createComment: (id, d) => request(`/community/posts/${id}/comments`, { method: "POST", body: d }),
