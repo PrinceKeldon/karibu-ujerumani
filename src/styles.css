@@ -13,9 +13,16 @@
 }
 
 * { box-sizing: border-box; }
+html {
+  height: 100%;
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   min-height: 100vh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
   background:
     radial-gradient(circle at 20% 8%, rgba(212, 160, 23, .18), transparent 30%),
     radial-gradient(circle at 84% 14%, rgba(26, 122, 60, .16), transparent 34%),
@@ -45,6 +52,9 @@ svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width:
 .screen-body {
   height: calc(100% - 132px - env(safe-area-inset-top, 0px));
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 0 20px 18px;
   scrollbar-width: none;
 }
@@ -326,6 +336,9 @@ h1, h2, h3, p { margin: 0; }
   grid-auto-columns: minmax(132px, 1fr);
   gap: 10px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
   padding-bottom: 2px;
   scrollbar-width: none;
 }
@@ -1062,6 +1075,9 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
   gap: 8px;
   margin-bottom: 14px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
   padding-bottom: 2px;
   scrollbar-width: none;
 }
@@ -1869,6 +1885,9 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
   padding: 10px 24px 36px;
   max-height: 72vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 .media-backdrop { align-items: center; justify-items: center; padding: 22px; }
 .media-carousel {
@@ -1995,4 +2014,27 @@ progress::-webkit-progress-value { background: var(--green); border-radius: 99px
     border: 0;
   }
   .screen-body { height: calc(100% - 132px - env(safe-area-inset-top, 0px)); }
+}
+
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  .searchbox input,
+  .composer input,
+  .finder-form input,
+  .sheet-form input,
+  .sheet-form select,
+  .sheet-form textarea,
+  .room-form input,
+  .room-form select,
+  .room-form textarea,
+  .auth-form input,
+  .admin-inline-form input,
+  .admin-inline-form select,
+  .admin-form input,
+  .admin-form textarea,
+  .admin-form select {
+    font-size: 16px;
+  }
 }

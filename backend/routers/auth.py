@@ -8,6 +8,11 @@ from ..database import get_db
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def location_label(postcode: str | None, city_name: str | None, state_name: str | None) -> str | None:
+    place = " ".join(part for part in [postcode, city_name] if part)
+    return ", ".join(part for part in [place, state_name] if part) or None
+
+
 def latest_verification_status(user_id: int, db: Session) -> str | None:
     req = (
         db.query(models.VerificationRequest)
@@ -24,6 +29,13 @@ def user_out(user: models.User, db: Session) -> dict:
         "email": user.email,
         "full_name": user.full_name,
         "location": user.location,
+        "postcode": user.postcode,
+        "city_name": user.city_name,
+        "state_name": user.state_name,
+        "city_id": user.city_id,
+        "state_id": user.state_id,
+        "latitude": user.latitude,
+        "longitude": user.longitude,
         "arrived_at": user.arrived_at,
         "profile_photo_url": user.profile_photo_url,
         "profile_photo_path": user.profile_photo_path,
@@ -47,10 +59,24 @@ def get_or_create_settings(user_id: int, db: Session) -> models.UserSettings:
 def register(data: schemas.UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
+    city = db.query(models.City).filter(models.City.id == data.city_id).first() if data.city_id else None
+    state = db.query(models.State).filter(models.State.id == data.state_id).first() if data.state_id else None
+    city_name = (data.city_name or (city.name if city else None) or "").strip() or None
+    state_name = (data.state_name or (state.name if state else None) or "").strip() or None
+    postcode = "".join(ch for ch in (data.postcode or "") if ch.isdigit()) or None
+    location = (data.location or "").strip() or location_label(postcode, city_name, state_name) or "Berlin, Germany"
     user = models.User(
         email=data.email,
         password_hash=hash_password(data.password),
         full_name=data.full_name,
+        location=location,
+        postcode=postcode,
+        city_name=city_name,
+        state_name=state_name,
+        city_id=city.id if city else data.city_id,
+        state_id=state.id if state else data.state_id,
+        latitude=data.latitude,
+        longitude=data.longitude,
     )
     db.add(user)
     db.commit()
@@ -92,6 +118,26 @@ def update_me(
         current_user.full_name = data.full_name.strip()
     if data.location is not None:
         current_user.location = data.location.strip() or current_user.location
+    if data.postcode is not None:
+        current_user.postcode = "".join(ch for ch in data.postcode if ch.isdigit()) or None
+    if data.city_name is not None:
+        current_user.city_name = data.city_name.strip() or None
+    if data.state_name is not None:
+        current_user.state_name = data.state_name.strip() or None
+    if data.city_id is not None:
+        current_user.city_id = data.city_id
+    if data.state_id is not None:
+        current_user.state_id = data.state_id
+    if data.latitude is not None:
+        current_user.latitude = data.latitude
+    if data.longitude is not None:
+        current_user.longitude = data.longitude
+    if data.location is None:
+        current_user.location = location_label(
+            current_user.postcode,
+            current_user.city_name,
+            current_user.state_name,
+        ) or current_user.location
     if data.arrived_at is not None:
         current_user.arrived_at = data.arrived_at.strip() or None
     db.commit()

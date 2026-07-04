@@ -124,6 +124,15 @@ def ensure_schema_compatibility() -> None:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_url TEXT")
     if "profile_photo_path" not in user_columns:
         statements.append("ALTER TABLE users ADD COLUMN profile_photo_path TEXT")
+    for column in ("postcode", "city_name", "state_name"):
+        if column not in user_columns:
+            statements.append(f"ALTER TABLE users ADD COLUMN {column} VARCHAR")
+    for column in ("latitude", "longitude"):
+        if column not in user_columns:
+            statements.append(f"ALTER TABLE users ADD COLUMN {column} FLOAT")
+    for column in ("state_id", "city_id"):
+        if column not in user_columns:
+            statements.append(f"ALTER TABLE users ADD COLUMN {column} INTEGER")
     if "events" in table_names and "user_id" not in event_columns:
         statements.append("ALTER TABLE events ADD COLUMN user_id INTEGER")
     if "events" in table_names:

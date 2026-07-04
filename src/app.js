@@ -60,7 +60,9 @@ let state = {
   emergencyType: "All",
   listRoomAmenities: [],
   listRoomLocation: null,
+  signupLocation: null,
   searchQuery: "",
+  scrollPositions: {},
   messages: [],
   sheet: null,
   carousel: null,
@@ -85,6 +87,7 @@ let state = {
 };
 
 const app = document.querySelector("#app");
+let renderedScreen = null;
 const adminPath = window.location.pathname.replace(/\/$/, "");
 const isAdminRoute = adminPath === "/admin" || window.location.pathname.endsWith("/admin.html") || window.location.hash === "#admin";
 if (isAdminRoute) sessionStorage.setItem("karibu_admin_route", "1");
@@ -201,13 +204,22 @@ async function loadGeography() {
     const [states, cities] = await Promise.all([api.geo.states(), api.geo.cities()]);
     state.states = states;
     state.cities = cities;
+    const profileCityId = Number(state.user?.city_id || 0);
     const savedCityId = Number(localStorage.getItem("karibu_city_id"));
+    const profileCityName = (state.user?.city_name || "").toLowerCase();
+    const profileStateName = (state.user?.state_name || "").toLowerCase();
     state.selectedCity =
+      cities.find((c) => c.id === profileCityId) ||
       cities.find((c) => c.id === savedCityId) ||
+      cities.find((c) => c.name.toLowerCase() === profileCityName && (!profileStateName || c.state_name.toLowerCase() === profileStateName)) ||
+      cities.find((c) => c.name.toLowerCase() === profileCityName) ||
       cities.find((c) => c.name === "Berlin") ||
       cities[0] ||
       null;
-    if (state.selectedCity) state.locationStatus = `${state.selectedCity.name}, ${state.selectedCity.state_abbreviation}`;
+    if (state.selectedCity) {
+      state.locationStatus = `${state.selectedCity.name}, ${state.selectedCity.state_abbreviation}`;
+      if (profileCityId) localStorage.setItem("karibu_city_id", String(profileCityId));
+    }
     render();
     detectLocation();
   } catch {
@@ -444,9 +456,10 @@ async function doRegister(email, password, fullName) {
   state.authError = null;
   render();
   try {
-    const data = await api.auth.register({ email, password, full_name: fullName });
+    const data = await api.auth.register({ email, password, full_name: fullName, ...signupLocationPayload() });
     setToken(data.access_token);
     state.user = data.user;
+    if (data.user?.city_id) localStorage.setItem("karibu_city_id", String(data.user.city_id));
     state.loading = false;
     state.messages = [
       { from: "bot", text: `Welcome to Karibu Ujerumani, ${data.user.full_name.split(" ")[0]}! 🎉\nI'm here for community, services, housing, and everyday life in Germany.` },
@@ -724,6 +737,13 @@ function login() {
 
 function register() {
   const err = state.authError ? `<p class="auth-error">${state.authError}</p>` : "";
+  const location = state.signupLocation || {};
+  const cityValue = location.city_name || state.authForm.city_name || "";
+  const stateValue = location.state_name || state.authForm.state_name || "";
+  const postcodeValue = location.postcode || state.authForm.postcode || "";
+  const locationResult = location.city_name
+    ? `<p class="location-result">Using ${escapeHtml([location.postcode, location.city_name].filter(Boolean).join(" "))}${location.state_name ? `, ${escapeHtml(location.state_name)}` : ""}</p>`
+    : `<p class="location-result muted">Enter your city, or use a German postal code to set the nearest city automatically.</p>`;
   return `<section class="phone-screen auth-screen">
     <div class="auth-body">
       <div class="auth-brand"><div class="brand-house small"><span></span><span></span><span></span></div><h1>Karibu<br>Ujerumani</h1></div>
@@ -731,9 +751,25 @@ function register() {
       <p class="auth-sub">Create your free account</p>
       ${err}
       <form class="auth-form" id="register-form">
-        <label>Full name<input type="text" name="name" placeholder="Your full name" required /></label>
-        <label>Email<input type="email" name="email" placeholder="you@example.com" required /></label>
+        <label>Full name<input type="text" name="name" placeholder="Your full name" value="${escapeHtml(state.authForm.name || "")}" required /></label>
+        <label>Email<input type="email" name="email" placeholder="you@example.com" value="${escapeHtml(state.authForm.email || "")}" required /></label>
         <label>Password<input type="password" name="password" placeholder="Choose a password (min 8 chars)" required /></label>
+        <fieldset class="location-fields signup-location-fields">
+          <legend>Your city in Germany</legend>
+          <label>Postal code
+            <div class="postcode-row">
+              <input id="signup-postcode" type="text" name="postcode" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="e.g. 50667" value="${escapeHtml(postcodeValue)}" />
+              <button type="button" data-action="lookup-signup-postcode">Find</button>
+            </div>
+          </label>
+          <label>City<input id="signup-city-name" type="text" name="city_name" placeholder="e.g. Cologne" value="${escapeHtml(cityValue)}" required /></label>
+          <label>State<input id="signup-state-name" type="text" name="state_name" placeholder="e.g. Nordrhein-Westfalen" value="${escapeHtml(stateValue)}" /></label>
+          <input type="hidden" name="city_id" value="${location.city_id || ""}" />
+          <input type="hidden" name="state_id" value="${location.state_id || ""}" />
+          <input type="hidden" name="latitude" value="${location.latitude || ""}" />
+          <input type="hidden" name="longitude" value="${location.longitude || ""}" />
+          ${locationResult}
+        </fieldset>
         <button class="primary" type="submit">${state.loading ? icons.spinner + " Creating account…" : "Create account"}</button>
       </form>
       <p class="auth-switch">Already have an account? <button data-screen="${screens.login}">Sign in</button></p>
@@ -1572,8 +1608,18 @@ function serviceTone(category) {
 function render() {
   // Always destroy Leaflet map before replacing DOM; initRathausMap re-creates it
   if (_rathausMap) { _rathausMap.remove(); _rathausMap = null; }
+  const currentBody = app.querySelector(".screen-body");
+  if (currentBody && renderedScreen) {
+    state.scrollPositions[renderedScreen] = currentBody.scrollTop;
+  }
   const screenMap = { splash, login, register, home, search, detail, listRoom, assistant, checklist, community, messages, bookings, profile, rathaus, emergency, admin: adminDashboard };
   app.innerHTML = screenMap[state.screen]?.() ?? "";
+  renderedScreen = state.screen;
+  const nextBody = app.querySelector(".screen-body");
+  if (nextBody) {
+    const savedScroll = state.scrollPositions[state.screen] || 0;
+    if (savedScroll) requestAnimationFrame(() => { nextBody.scrollTop = savedScroll; });
+  }
   if (state.screen === screens.rathaus) requestAnimationFrame(initRathausMap);
 }
 
@@ -2129,6 +2175,7 @@ function handleAction(action) {
   if (action === "clear-search") { state.searchQuery = ""; render(); return; }
   if (action === "city-selector") { openSheet("Choose city", citySelectorSheet(), "Close"); return; }
   if (action === "lookup-postcode") { lookupListingPostcode(); return; }
+  if (action === "lookup-signup-postcode") { lookupSignupPostcode(); return; }
   if (action === "close-carousel") { state.carousel = null; render(); return; }
   if (action === "carousel-prev" && state.carousel) {
     state.carousel.index = (state.carousel.index - 1 + state.carousel.images.length) % state.carousel.images.length;
@@ -2313,6 +2360,15 @@ app.addEventListener("submit", async (e) => {
   // Register form
   if (e.target.id === "register-form") {
     const fd = new FormData(e.target);
+    state.authForm = {
+      ...state.authForm,
+      name: fd.get("name") || "",
+      email: fd.get("email") || "",
+      postcode: fd.get("postcode") || "",
+      city_name: fd.get("city_name") || "",
+      state_name: fd.get("state_name") || "",
+    };
+    state.signupLocation = signupLocationFromForm(e.target);
     doRegister(fd.get("email"), fd.get("password"), fd.get("name"));
     return;
   }
@@ -2638,6 +2694,15 @@ app.addEventListener("input", (e) => {
     state.searchQuery = e.target.value;
     updateSearchResultsDom();
   }
+  if (e.target.id === "signup-city-name" || e.target.id === "signup-state-name") {
+    state.signupLocation = {
+      ...(state.signupLocation || {}),
+      city_id: undefined,
+      state_id: undefined,
+      latitude: undefined,
+      longitude: undefined,
+    };
+  }
 });
 
 app.addEventListener("change", (e) => {
@@ -2682,6 +2747,73 @@ async function lookupListingPostcode() {
     showToast(`Location found: ${result.city_name}`);
   } catch (err) {
     state.listRoomLocation = { ...(state.listRoomLocation || {}), postcode };
+    showToast(err.message || "Could not find that postal code");
+  }
+}
+
+function signupLocationFromForm(form) {
+  const fd = new FormData(form);
+  const postcode = (fd.get("postcode") || "").trim();
+  const cityName = (fd.get("city_name") || "").trim();
+  const stateName = (fd.get("state_name") || "").trim();
+  const cityId = Number(fd.get("city_id") || 0);
+  const stateId = Number(fd.get("state_id") || 0);
+  const latitude = Number(fd.get("latitude") || NaN);
+  const longitude = Number(fd.get("longitude") || NaN);
+  const location = {
+    postcode,
+    city_name: cityName,
+    state_name: stateName,
+    city_id: cityId || undefined,
+    state_id: stateId || undefined,
+    latitude: Number.isFinite(latitude) ? latitude : undefined,
+    longitude: Number.isFinite(longitude) ? longitude : undefined,
+  };
+  return Object.fromEntries(Object.entries(location).filter(([, value]) => value !== "" && value !== undefined));
+}
+
+function signupLocationPayload() {
+  const location = state.signupLocation || {};
+  const place = [location.postcode, location.city_name].filter(Boolean).join(" ");
+  return {
+    ...location,
+    location: [place, location.state_name].filter(Boolean).join(", ") || undefined,
+  };
+}
+
+async function lookupSignupPostcode() {
+  const form = document.getElementById("register-form");
+  const postcodeInput = document.getElementById("signup-postcode");
+  const postcode = postcodeInput?.value.trim();
+  if (form) {
+    const fd = new FormData(form);
+    state.authForm = {
+      ...state.authForm,
+      name: fd.get("name") || "",
+      email: fd.get("email") || "",
+      postcode: fd.get("postcode") || "",
+      city_name: fd.get("city_name") || "",
+      state_name: fd.get("state_name") || "",
+    };
+  }
+  if (!/^\d{5}$/.test(postcode || "")) {
+    showToast("Enter a valid 5-digit German postal code");
+    postcodeInput?.focus();
+    return;
+  }
+  try {
+    const result = await api.geo.postcode(postcode);
+    state.signupLocation = result;
+    state.authForm = {
+      ...state.authForm,
+      postcode: result.postcode,
+      city_name: result.city_name,
+      state_name: result.state_name || "",
+    };
+    render();
+    showToast(`Signup city set to ${result.city_name}`);
+  } catch (err) {
+    state.signupLocation = form ? signupLocationFromForm(form) : { postcode };
     showToast(err.message || "Could not find that postal code");
   }
 }
@@ -2738,4 +2870,4 @@ async function doListRoom(data) {
 // ── Boot ──────────────────────────────────────────────────────
 registerServiceWorker();
 render();
-setTimeout(initAuth, 1800);
+requestAnimationFrame(() => setTimeout(initAuth, 250));

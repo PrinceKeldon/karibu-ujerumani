@@ -8,6 +8,14 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
+    postcode: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
+    city_id: Optional[int] = None
+    state_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    location: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -20,6 +28,13 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     location: str
+    postcode: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
+    city_id: Optional[int] = None
+    state_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_verified: bool
     arrived_at: Optional[str] = None
     profile_photo_url: Optional[str] = None
@@ -32,6 +47,13 @@ class UserOut(BaseModel):
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     location: Optional[str] = None
+    postcode: Optional[str] = None
+    city_name: Optional[str] = None
+    state_name: Optional[str] = None
+    city_id: Optional[int] = None
+    state_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     arrived_at: Optional[str] = None
 
 
